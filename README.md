@@ -65,12 +65,26 @@ ratchet status
 |---|---|---|
 | pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `tool_call` hook |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
-| OpenCode | `.opencode/plugins/ratchet.js`, `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
+| OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
 | T3 Code | the same OpenCode plugin and skill | partial: same gap as OpenCode |
 | Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 
 Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`.
+
+## Tested
+
+| Harness | Command | Status | Notes |
+|---|---|---|---|
+| Codex 0.163 | `npm run test:codex` | PASS | Native and Bash-heredoc `apply_patch`; OpenCode Go via `codex-go` |
+| Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated config with one hook; `Write` allow and deny; OpenCode Go via `claude-go` |
+| pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension; `write` allow and deny |
+| OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny |
+| Cursor | none | Not tested | Not installed; no adapter claimed |
+
+`npm test` runs 73 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+
+See [docs/test-matrix.md](docs/test-matrix.md) for the full feature-to-test map and the bugs the tests caught.
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
 
@@ -153,4 +167,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits. See [docs/testing.md](docs/testing.md) for the test layers and the two bugs the unit suite caught. See [docs/codex-test.md](docs/codex-test.md) for the isolated Codex hook test.
+See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/test-matrix.md](docs/test-matrix.md) for the feature-to-test map. Per-harness records: [Codex](docs/codex-test.md), [Claude](docs/claude-test.md), [pi](docs/pi-test.md), [OpenCode](docs/opencode-test.md). See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.

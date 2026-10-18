@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Run Claude Code with the active OpenCode Go credential from the OpenCode CLI.
+# OpenCode Go's Anthropic endpoint requires an x-opencode-session header.
+set -euo pipefail
+
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "claude-go: opencode CLI not found" >&2
+  exit 1
+fi
+
+KEY="$(
+  opencode auth export | node -e '
+let s = "";
+process.stdin.on("data", (d) => (s += d));
+process.stdin.on("end", () => {
+  try {
+    const rows = JSON.parse(s);
+    const row = rows.find((r) => r.integrationID === "opencode-go" && r.active);
+    if (!row || !row.value || !row.value.key) process.exit(2);
+    process.stdout.write(row.value.key);
+  } catch {
+    process.exit(2);
+  }
+});
+'
+)" || {
+  echo "claude-go: no active OpenCode Go credential" >&2
+  exit 1
+}
+
+SESSION="claude-go-$(date +%s)-$$"
+export ANTHROPIC_BASE_URL="https://opencode.ai/zen/go"
+# The OpenCode Go endpoint authenticates with x-api-key, which Claude Code
+# sends from ANTHROPIC_API_KEY. A bearer token is rejected.
+export ANTHROPIC_API_KEY="$KEY"
+unset ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_CUSTOM_HEADERS="x-opencode-session: $SESSION"
+export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-deepseek-v4.1-flash}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-deepseek-v4.1-flash}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-deepseek-v4.1-flash}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-deepseek-v4-pro}"
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-1000000}"
+
+# A user settings.json that pins another provider wins over shell env. Pass a
+# generated settings file with higher precedence that neutralizes the dead
+# provider and keeps the endpoint and model, without the secret. The key stays
+# in the shell environment.
+SETTINGS_DIR="${CLAUDE_GO_DIR:-$HOME/.claude-go}"
+mkdir -p "$SETTINGS_DIR"
+cat > "$SETTINGS_DIR/settings.json" <<'JSON'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "",
+    "ANTHROPIC_BASE_URL": "https://opencode.ai/zen/go",
+    "ANTHROPIC_MODEL": "deepseek-v4.1-flash",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4.1-flash",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4.1-flash",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000"
+  }
+}
+JSON
+chmod 600 "$SETTINGS_DIR/settings.json"
+
+exec claude --settings "$SETTINGS_DIR/settings.json" "$@"

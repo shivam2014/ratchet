@@ -43,6 +43,7 @@ import {
   uninstallHarness,
   loadManifest,
   saveManifest,
+  which,
 } from "../lib/harnesses.mjs";
 import readline from "node:readline/promises";
 
@@ -438,6 +439,23 @@ async function selectHarnesses(args, detected) {
   return answer.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+function linkCli(ctx) {
+  const binDir = path.join(ctx.home, ".local", "bin");
+  const link = path.join(binDir, "ratchet");
+  const cli = path.join(ctx.repoRoot, "bin", "ratchet.mjs");
+  if (fs.existsSync(link)) {
+    if (fs.lstatSync(link).isSymbolicLink() && fs.readlinkSync(link) === cli) {
+      ctx.actions.push(`unchanged ${link}`);
+    } else {
+      ctx.warnings.push(`${link} exists and is not the Ratchet CLI; add ${binDir} to PATH or set RATCHET_BIN`);
+    }
+    return;
+  }
+  ensureDir(binDir);
+  if (!ctx.dryRun) fs.symlinkSync(cli, link);
+  ctx.actions.push(`link ${link}`);
+}
+
 async function commandInstall(args) {
   const root = findRoot(process.cwd());
   if (!fs.existsSync(configPath(root))) fail("No .ratchet/config.json. Run: ratchet init");
@@ -455,6 +473,10 @@ async function commandInstall(args) {
   }
 
   if (ctx.scope === "project") installGitHook(root, ctx);
+  if (ctx.scope === "user") linkCli(ctx);
+  if (ctx.scope === "project" && !which("ratchet")) {
+    ctx.warnings.push("ratchet is not on PATH; run `ratchet install --harness <name> --user` to link ~/.local/bin/ratchet, or set RATCHET_BIN");
+  }
   if (ctx.scope === "project") {
     const sync = syncAgents(root, { check: ctx.dryRun });
     ctx.actions.push(`${sync.changed ? "update" : "unchanged"} ${sync.file}`);
@@ -658,7 +680,8 @@ const args = parseArgs(argv);
 const cmd = args.positional.shift();
 
 if (args.has("version") || cmd === "version") {
-  out("ratchet 0.1.0");
+  const pkg = readJson(path.join(import.meta.dirname, "..", "package.json"), {});
+  out(`ratchet ${pkg.version ?? "0.0.0"}`);
   process.exit(0);
 }
 if (args.has("help") || !cmd || cmd === "help") {

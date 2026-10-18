@@ -4,6 +4,8 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const WRITE = new Set(["write", "edit"]);
 const READ = new Set(["read", "grep", "find", "ls", "glob"]);
@@ -13,6 +15,13 @@ function kind(tool: string) {
   if (tool === "bash") return "bash";
   if (READ.has(tool)) return "read";
   return "other";
+}
+
+function resolveBin() {
+  if (process.env.RATCHET_BIN) return process.env.RATCHET_BIN;
+  const local = path.join(process.env.HOME || "", ".local", "bin", "ratchet");
+  if (fs.existsSync(local)) return local;
+  return "ratchet";
 }
 
 export default function (pi: ExtensionAPI) {
@@ -29,7 +38,7 @@ export default function (pi: ExtensionAPI) {
       input: event.input,
       cwd,
     };
-    const bin = process.env.RATCHET_BIN || "ratchet";
+    const bin = resolveBin();
     const result = spawnSync(bin, ["guard"], {
       input: JSON.stringify(payload),
       encoding: "utf8",

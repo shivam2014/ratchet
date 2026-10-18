@@ -1,51 +1,69 @@
 /**
- * OpenCode adapter. Install as .opencode/plugins/ratchet.js with:
+ * OpenCode 2.x adapter. Install as .opencode/plugins/ratchet.js with:
  * ratchet install --harness opencode --project --yes
  *
- * OpenCode calls this before built-in tools. Throwing aborts the tool call and
- * returns the message to the model. MCP tools and subagent calls may bypass
- * this hook in some OpenCode versions, so CI and git remain the authority.
+ * OpenCode 2.0 replaced the v1 hook object with a default definition whose
+ * setup registers hooks imperatively. Throwing from execute.before aborts the
+ * tool call and returns the error to the model.
+ *
+ * MCP tools and subagent calls may bypass this hook in some OpenCode versions,
+ * so CI and git remain the authority.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const WRITE = new Set(["write", "edit", "patch", "multiedit", "apply_patch"]);
+const BASH = new Set(["bash", "shell", "exec", "run"]);
 const READ = new Set(["read", "grep", "glob", "list", "webfetch", "websearch"]);
 
-function kind(tool) {
-  const name = String(tool || "").toLowerCase();
-  if (WRITE.has(name)) return "write";
-  if (name === "bash" || name === "shell") return "bash";
-  if (READ.has(name)) return "read";
-  return "other";
+function resolveBin() {
+  if (process.env.RATCHET_BIN) return process.env.RATCHET_BIN;
+  const local = path.join(process.env.HOME || "", ".local", "bin", "ratchet");
+  if (fs.existsSync(local)) return local;
+  return "ratchet";
 }
 
-export const Ratchet = async ({ directory }) => ({
-  "tool.execute.before": async (input, output) => {
-    const tool = kind(input?.tool);
-    if (tool === "read" || tool === "other") return;
+export default {
+  id: "ratchet",
+  setup: async (ctx) => {
+    const directory =
+      ctx.location?.directory ||
+      ctx.location?.project?.directory ||
+      (typeof ctx.directory === "string" ? ctx.directory : undefined) ||
+      (typeof ctx.worktree === "string" ? ctx.worktree : undefined) ||
+      process.cwd();
 
-    const event = {
-      harness: "opencode",
-      session_id: input?.sessionID ?? null,
-      agent: input?.agent ?? null,
-      tool,
-      input: output?.args ?? {},
-      cwd: directory,
-    };
+    await ctx.tool.hook("execute.before", (event) => {
+      const name = String(event.tool || "").toLowerCase();
+      let tool = "other";
+      if (BASH.has(name)) tool = "bash";
+      else if (WRITE.has(name)) tool = "write";
+      else if (READ.has(name)) return;
+      else return;
 
-    const bin = process.env.RATCHET_BIN || "ratchet";
-    const result = spawnSync(bin, ["guard"], {
-      input: JSON.stringify(event),
-      encoding: "utf8",
-      cwd: directory,
+      const payload = {
+        harness: "opencode",
+        session_id: event.sessionID ?? event.session_id ?? null,
+        agent: event.agent ?? null,
+        tool,
+        input: event.input ?? {},
+        cwd: directory,
+      };
+      const bin = resolveBin();
+      const result = spawnSync(bin, ["guard"], {
+        input: JSON.stringify(payload),
+        encoding: "utf8",
+        cwd: directory,
+      });
+      if (result.error) {
+        throw new Error(`[ratchet] cannot run "${bin}": ${result.error.message}`);
+      }
+      if (result.status === 2) {
+        throw new Error((result.stderr || result.stdout || "").trim() || "[ratchet] blocked by task contract");
+      }
     });
 
-    if (result.error) {
-      throw new Error(`[ratchet] cannot run "${bin}": ${result.error.message}. Install the CLI or set RATCHET_BIN.`);
-    }
-    if (result.status === 2) {
-      const reason = (result.stderr || result.stdout || "").trim();
-      throw new Error(reason || "[ratchet] blocked by task contract");
-    }
+    return () => {};
   },
-});
+};

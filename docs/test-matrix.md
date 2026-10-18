@@ -1,0 +1,66 @@
+# Test matrix
+
+Every Ratchet feature, how it is tested, and the result. `npm test` is deterministic and offline. The `test:<harness>` scripts are real model sessions and need network plus an active OpenCode Go credential.
+
+## Unit and CLI
+
+| Feature | File | Cases |
+|---|---|---|
+| Glob matching | `test/glob.test.mjs` | `**`, `*`, `?`, literal brackets, deny patterns |
+| Shell classification | `test/classify.test.mjs` | reads, redirects, `rm`, `sed -i`, `cp`, `git add`, `git -C`, `git commit`, `git diff`, `apply_patch` heredoc, `git apply` heredoc, inline interpreters, hard denies, package managers |
+| Decision policy | `test/decide.test.mjs` | allow/deny, scope, deny list, read-only, read without contract, write without path, budgets, bash hard deny, bash redirect, unresolved bash |
+| Contract state | `test/contract.test.mjs` | check detection, contract defaults, path normalization, version rejection |
+| Rule table | `test/rules.test.mjs` | valid rows, prose warnings, missing enforcer/proof, unknown layer, malformed rows |
+| AGENTS.md sync | `test/agents-md.test.mjs` | append, replace, idempotent, drift check |
+| Check runner | `test/checks.test.mjs` | pass, fail, timeout, empty |
+| Filesystem helpers | `test/fsx.test.mjs` | root discovery, relative/absolute paths, JSON round trip, slug, timestamp |
+| CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
+
+Total: 73 tests, all passing.
+
+```bash
+npm test
+```
+
+## Harness end-to-end
+
+| Harness | Script | Result | What was exercised |
+|---|---|---|---|
+| Codex 0.163 | `npm run test:codex` | PASS | Native `apply_patch` and Bash-heredoc `apply_patch`; allow inside, deny outside; check + done; OpenCode Go provider via `codex-go` |
+| Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated `CLAUDE_CONFIG_DIR` with only the Ratchet hook; `Write` allow and deny; check + done; OpenCode Go provider via `claude-go` |
+| pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension loaded; `write` allow and deny; check + done; OpenCode Go provider |
+| OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny; check + done |
+| T3 Code | inherits OpenCode | Not separately automated | Same plugin file; T3 MCP tools are outside the plugin hook path |
+| Cursor | none | Not tested | Not installed on this machine; no adapter claimed |
+
+### Isolation used
+
+- Codex: `CODEX_HOME=~/.codex-ratchet-test`, one `PreToolUse` hook, no plugins, no notify, no inline hooks.
+- Claude: `CLAUDE_CONFIG_DIR=~/.claude-ratchet-test`, one `PreToolUse` hook, no plugins.
+- pi: `--no-extensions --extension adapters/pi/ratchet.ts --no-skills --no-context-files --no-mcp`.
+- OpenCode: project `.opencode/plugins/ratchet.js` only, `--standalone` server.
+
+## Bugs the tests found
+
+Each was fixed at the source and has a test or a documented proof.
+
+| Bug | Caught by | Fix |
+|---|---|---|
+| `write` with no resolvable path was allowed | `decide` unit test | Fail closed for explicit write tools |
+| Reads denied when no contract existed | `decide` unit test | Classify the tool before requiring a contract |
+| `git -C src add a.ts` was invisible | `classify` red-green | Skip git global options, rebase paths onto `-C` |
+| `rm -f src/a.ts` skipped its operand | `classify` test | `-f` is not a value flag |
+| Codex `apply_patch <<'PATCH'` via Bash was a read | Codex e2e | `patchTargets()` extracts patch body paths |
+| Codex adapter spawned `ratchet` from PATH and failed | Codex e2e | Fail closed, then resolve the CLI relative to the adapter |
+| OpenCode 2.x silently rejected the v1 plugin | OpenCode e2e | Rewrote the adapter to the v2 `id` + `setup` + `ctx.tool.hook` contract; v1 file kept for older versions |
+| OpenCode v2 `ctx.directory` is undefined | OpenCode probe | Use `ctx.location.directory` |
+| Claude hooks used `ratchet` from PATH | Claude e2e | Installer writes the absolute `node ratchet.mjs guard` command |
+| Claude sent the Go key as a bearer token | Claude smoke test | Use `ANTHROPIC_API_KEY` (x-api-key), not `ANTHROPIC_AUTH_TOKEN` |
+
+## Still manual or untested
+
+- Interactive hook trust: Codex `/hooks` and Claude's trust prompt were bypassed with flags in automation.
+- MCP tool classification: unknown tools are allowed and left to CI.
+- Subagent tool calls: not exercised in any harness.
+- Cursor: no adapter or test.
+- Formal verification: not implemented as a check type.

@@ -7,3 +7,5 @@ glob-brackets-literal	code	lib/glob.mjs + test/glob.test.mjs	test/glob.test.mjs 
 git-dash-c-path-resolution	code	lib/classify.mjs + test/classify.test.mjs	test/classify.test.mjs git -C red-green
 codex-hook-resolves-cli	code	adapters/codex/hook.mjs	docs/codex-test.md first finding (ENOENT fail-closed)
 apply-patch-heredoc	code	lib/classify.mjs + test/classify.test.mjs	test/classify.test.mjs apply_patch heredoc (Codex bypass)
+opencode-v2-plugin-shape	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs id: "ratchet"
+claude-absolute-hook-command	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs claude format

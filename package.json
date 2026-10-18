@@ -1,13 +1,40 @@
 {
   "name": "ratchet",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "description": "Harness-neutral contract and verification gate for coding agents.",
-  "bin": { "ratchet": "./bin/ratchet.mjs" },
+  "bin": {
+    "ratchet": "./bin/ratchet.mjs"
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:codex": "bash test/codex-e2e.sh",
+    "test:claude": "bash test/claude-e2e.sh",
+    "test:pi": "bash test/pi-e2e.sh",
+    "test:opencode": "bash test/opencode-e2e.sh",
     "demo": "bash test/demo.sh"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "files": [
+    "bin",
+    "lib",
+    "adapters",
+    "skills",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "plugin.json"
+  ],
+  "keywords": [
+    "agents",
+    "verification",
+    "hooks",
+    "codex",
+    "claude-code",
+    "opencode",
+    "pi"
+  ]
 }

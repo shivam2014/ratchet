@@ -67,10 +67,12 @@ pi.on("tool_call", async (event, ctx) => {
 
 If the pi orchestrator extension is loaded, do not add this as a second independent handler. Call the same `decide()` from inside the orchestrator's existing `tool_call` handler. Two guards with two contracts is how drift starts.
 
-### OpenCode / T3 Code
+### OpenCode 1.x / T3 Code on 1.x
+
+On OpenCode 1.x only, the plugin is a default-exported function returning named hooks. The installer writes this shape to `ratchet-v1.js` when the detected major version is below 2.
 
 ```js
-export const Ratchet = async ({ directory }) => ({
+export const RatchetV1 = async ({ directory }) => ({
   "tool.execute.before": async (input, output) => {
     const result = spawnSync("ratchet", ["guard"], {
       input: JSON.stringify({ harness: "opencode", tool: input.tool, input: output.args, cwd: directory }),
@@ -83,7 +85,7 @@ export const Ratchet = async ({ directory }) => ({
 
 OpenCode turns a thrown error into a failed tool call and shows the message to the model.
 
-Install with `ratchet sync --install`, or `ratchet install --harness opencode --project --yes`, which writes `.opencode/plugins/ratchet.js`.
+Install with `ratchet sync --install`, or `ratchet install --harness opencode --project --yes`, which writes `.opencode/plugins/ratchet.js` using the adapter for the detected major version.
 
 ### Claude Code
 
@@ -107,6 +109,27 @@ Install with `ratchet sync --install`, or `ratchet install --harness opencode --
 ### Cursor
 
 Use the same `PreToolUse` shape as Claude Code, then verify the current Cursor hook config. Cursor also reads `.claude/agents` and `.codex/agents`, so the skill and the contract travel; the hook wiring is the part to check.
+
+### OpenCode
+
+OpenCode 2.x replaced the v1 hook object with a default definition and a `setup` function:
+
+```js
+export default {
+  id: "ratchet",
+  setup: async (ctx) => {
+    await ctx.tool.hook("execute.before", (event) => {
+      // event.tool, event.id, event.input
+      if (blocked) throw new Error("reason");
+    });
+    return () => {};
+  },
+};
+```
+
+The installer detects the OpenCode major version and writes the v2 file (`ratchet.js`) or the v1 file (`ratchet-v1.js`). A v1 plugin on a v2 runtime is skipped with a warning and no error, so the harness looks normal while the policy is off. Check for the plugin in the server log after any OpenCode upgrade.
+
+`ctx.directory` is undefined on 2.0. Use `ctx.location.directory`.
 
 ### Codex
 

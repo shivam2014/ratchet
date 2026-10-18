@@ -139,6 +139,7 @@ test("install: opencode plugin, kill switch, uninstall", () => {
   const install = ratchet(dir, ["install", "--harness", "opencode", "--project", "--yes"]);
   assert.equal(install.status, 0, install.stderr);
   assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), true);
+  assert.match(fs.readFileSync(path.join(dir, ".opencode/plugins/ratchet.js"), "utf8"), /id: "ratchet"/);
   assert.equal(fs.existsSync(path.join(dir, ".agents/skills/ratchet-mode")), true);
 
   assert.equal(ratchet(dir, ["disable", "--reason", "test"]).status, 0);
@@ -196,6 +197,30 @@ test("install: codex hook is merged, idempotent, and removable", () => {
   assert.equal(ratchet(dir, ["uninstall", "--harness", "codex", "--project"]).status, 0);
   const third = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
   assert.equal(third.hooks.PreToolUse.length, 0);
+});
+
+test("guard: claude format allows in scope and denies out of scope", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  ratchet(dir, ["task", "start", "--role", "coder", "--goal", "g", "--scope", "src/**"]);
+
+  const deny = ratchet(
+    dir,
+    ["guard", "--format", "claude"],
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "outside.txt" }, cwd: dir }),
+  );
+  assert.equal(deny.status, 0);
+  const denied = JSON.parse(deny.stdout);
+  assert.equal(denied.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(denied.hookSpecificOutput.permissionDecisionReason, /outside scope/);
+
+  const allow = ratchet(
+    dir,
+    ["guard", "--format", "claude"],
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "src/a.ts" }, cwd: dir }),
+  );
+  assert.equal(allow.status, 0);
+  assert.equal(allow.stdout.trim(), "");
 });
 
 test("install: dry run writes nothing", () => {
