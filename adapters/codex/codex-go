@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Run Codex with the active OpenCode Go credential from the OpenCode CLI.
+# The key is piped from `opencode auth export` and never printed.
+set -euo pipefail
+
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "codex-go: opencode CLI not found" >&2
+  exit 1
+fi
+
+KEY="$(
+  opencode auth export | node -e '
+let s = "";
+process.stdin.on("data", (d) => (s += d));
+process.stdin.on("end", () => {
+  try {
+    const rows = JSON.parse(s);
+    const row = rows.find((r) => r.integrationID === "opencode-go" && r.active);
+    if (!row || !row.value || !row.value.key) process.exit(2);
+    process.stdout.write(row.value.key);
+  } catch {
+    process.exit(2);
+  }
+});
+'
+)" || {
+  echo "codex-go: no active OpenCode Go credential. Run: opencode auth login opencode-go" >&2
+  exit 1
+}
+
+export OPENCODE_GO_API_KEY="$KEY"
+exec codex -p opencode-go "$@"

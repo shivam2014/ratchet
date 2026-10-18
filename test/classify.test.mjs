@@ -50,6 +50,44 @@ test("classify: git commit is a mutation with no file operand", () => {
   assert.deepEqual(r.paths, []);
 });
 
+test("classify: apply_patch heredoc names its files", () => {
+  const command = [
+    "apply_patch <<'PATCH'",
+    "*** Begin Patch",
+    "*** Add File: src/a.txt",
+    "+hello",
+    "*** Add File: outside.txt",
+    "+leak",
+    "*** End Patch",
+    "PATCH",
+  ].join("\n");
+  const r = classifyBash(command);
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.txt", "outside.txt"]);
+});
+
+test("classify: git apply heredoc names its files", () => {
+  const command = [
+    "git apply <<'PATCH'",
+    "diff --git a/src/a.txt b/src/a.txt",
+    "--- a/src/a.txt",
+    "+++ b/src/a.txt",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "PATCH",
+  ].join("\n");
+  const r = classifyBash(command);
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.txt"]);
+});
+
+test("classify: git diff stays a read", () => {
+  const r = classifyBash("git diff HEAD~1");
+  assert.equal(r.write, false);
+  assert.deepEqual(r.paths, []);
+});
+
 test("classify: inline interpreter code is write-class and unresolved", () => {
   const r = classifyBash('node -e "require(\'fs\').writeFileSync(\'x\',\'y\')"');
   assert.equal(r.write, true);
