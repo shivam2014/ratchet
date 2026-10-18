@@ -1,0 +1,7 @@
+rule	layer	enforcer	proof
+write-target-required	code	lib/decide.mjs + test/decide.test.mjs	test/decide.test.mjs (failed on pre-fix HEAD)
+reads-allowed-without-contract	code	lib/decide.mjs + test/decide.test.mjs	test/decide.test.mjs (failed on pre-fix HEAD)
+bash-flag-value-parsing	code	lib/classify.mjs + test/classify.test.mjs	test/classify.test.mjs rm -f regression
+opencode-plugin-path	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs install opencode
+glob-brackets-literal	code	lib/glob.mjs + test/glob.test.mjs	test/glob.test.mjs brackets
+git-dash-c-path-resolution	code	lib/classify.mjs + test/classify.test.mjs	test/classify.test.mjs git -C red-green

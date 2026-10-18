@@ -24,3 +24,8 @@ test("glob: exact and deny patterns", () => {
   assert.equal(matchesAny("src/.env", ["**/.env"]), true);
   assert.equal(matchesAny("src/.env", [".env"]), false);
 });
+
+test("glob: brackets are literal", () => {
+  assert.equal(globToRegExp("src/[ab].ts").test("src/[ab].ts"), true);
+  assert.equal(globToRegExp("src/[ab].ts").test("src/a.ts"), false);
+});

@@ -14,6 +14,48 @@ test("classify: redirect target is a write", () => {
   assert.deepEqual(r.paths, ["src/a.ts"]);
 });
 
+test("classify: append redirect is a write", () => {
+  const r = classifyBash("echo hi >> src/a.ts");
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.ts"]);
+});
+
+test("classify: stderr redirect is not a file mutation", () => {
+  const r = classifyBash("echo hi 2>/dev/null");
+  assert.equal(r.write, false);
+  assert.deepEqual(r.paths, []);
+});
+
+test("classify: tee names its target", () => {
+  const r = classifyBash("echo hi | tee src/a.ts");
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.ts"]);
+});
+
+test("classify: git add names its paths", () => {
+  const r = classifyBash("git add src/a.ts");
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.ts"]);
+});
+
+test("classify: git -C resolves the path against the directory", () => {
+  const r = classifyBash("git -C src add a.ts");
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, ["src/a.ts"]);
+});
+
+test("classify: git commit is a mutation with no file operand", () => {
+  const r = classifyBash('git commit -m "fix"');
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, []);
+});
+
+test("classify: inline interpreter code is write-class and unresolved", () => {
+  const r = classifyBash('node -e "require(\'fs\').writeFileSync(\'x\',\'y\')"');
+  assert.equal(r.write, true);
+  assert.deepEqual(r.paths, []);
+});
+
 test("classify: rm names its operands", () => {
   const r = classifyBash("rm -f src/a.ts");
   assert.equal(r.write, true);

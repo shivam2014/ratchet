@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "id": "test",
+      "cmd": "npm run test"
+    }
+  ],
+  "defaults": {
+    "maxFiles": 12,
+    "maxWrites": 60,
+    "deny": [
+      ".git/**",
+      ".env",
+      ".env.*",
+      "**/*.pem",
+      "**/id_rsa",
+      "**/secrets/**"
+    ]
+  }
+}

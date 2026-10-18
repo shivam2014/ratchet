@@ -153,4 +153,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.
+See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits. See [docs/testing.md](docs/testing.md) for the test layers and the two bugs the unit suite caught.
