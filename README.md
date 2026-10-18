@@ -67,10 +67,10 @@ ratchet status
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
 | OpenCode | `.opencode/plugins/ratchet.js`, `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
 | T3 Code | the same OpenCode plugin and skill | partial: same gap as OpenCode |
-| Codex | `.agents/skills/ratchet-mode` | none: no portable pre-tool hook; use sandbox + CI |
+| Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 
-Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, and `~/.agents/skills`.
+Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`.
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
 
@@ -153,4 +153,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits. See [docs/testing.md](docs/testing.md) for the test layers and the two bugs the unit suite caught.
+See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits. See [docs/testing.md](docs/testing.md) for the test layers and the two bugs the unit suite caught. See [docs/codex-test.md](docs/codex-test.md) for the isolated Codex hook test.

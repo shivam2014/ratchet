@@ -110,7 +110,43 @@ Use the same `PreToolUse` shape as Claude Code, then verify the current Cursor h
 
 ### Codex
 
-Assume no portable pre-tool hook. Codex's sandbox and approval mode are the boundary. Ratchet still supplies the contract, the check command, and the CI gate.
+Codex 0.163 ships a `PreToolUse` hook that covers `Bash`, `apply_patch`, MCP tools, and other local function tools. Hosted tools such as web search do not use the hook path. Hooks require a trust review, or `--dangerously-bypass-hook-trust` for automation.
+
+`~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/node /path/to/ratchet/adapters/codex/hook.mjs",
+            "timeout": 30,
+            "statusMessage": "ratchet: checking contract"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`ratchet install --harness codex --user` writes this. The adapter is a no-op outside a repo with `.ratchet/current`, so a user-level install does not block unrelated projects.
+
+Codex delivers `Bash` and `apply_patch` as `tool_input.command`. The adapter maps that to Ratchet's `bash` and `write` events and returns Codex's deny JSON on a block.
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "[ratchet] outside.txt is outside scope [src/**]"
+  }
+}
+```
 
 ### Git and CI
 

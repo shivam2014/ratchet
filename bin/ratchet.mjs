@@ -454,7 +454,7 @@ async function commandInstall(args) {
     manifest.installed[name] = { scope: ctx.scope, paths, at: new Date().toISOString() };
   }
 
-  installGitHook(root, ctx);
+  if (ctx.scope === "project") installGitHook(root, ctx);
   if (ctx.scope === "project") {
     const sync = syncAgents(root, { check: ctx.dryRun });
     ctx.actions.push(`${sync.changed ? "update" : "unchanged"} ${sync.file}`);
@@ -601,6 +601,34 @@ function commandPrompt(args) {
   out("If a write is blocked, finish within scope or start a new contract with a wider scope.");
 }
 
+function commandReport(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const events = readJsonl(eventsPath(root, contract.id));
+  const checks = readJson(checksPath(root, contract.id), null);
+  const summary = {
+    id: contract.id,
+    goal: contract.goal,
+    allow: events.filter((e) => e.decision === "allow").length,
+    deny: events.filter((e) => e.decision === "deny").length,
+    unresolved: events.filter((e) => e.unresolved).length,
+  };
+  if (args.has("json")) {
+    out(JSON.stringify({ summary, checks, events }, null, 2));
+    return;
+  }
+  out(`run:     ${contract.id}`);
+  out(`goal:    ${contract.goal}`);
+  out(`events:  ${summary.allow} allow, ${summary.deny} deny${summary.unresolved ? `, ${summary.unresolved} unresolved` : ""}`);
+  out(`checks:  ${checks ? `${checks.ok ? "pass" : "fail"} (${checks.ranAt})` : "not run"}`);
+  out("");
+  for (const e of events) {
+    const paths = (e.paths ?? []).join(", ") || "-";
+    const reason = e.reason ? `  — ${e.reason}` : "";
+    out(`${e.decision.toUpperCase().padEnd(5)} ${String(e.tool).padEnd(6)} ${paths}${reason}`);
+  }
+}
+
 function usage() {
   out(`ratchet - contract-enforced agent workflow
 
@@ -608,6 +636,7 @@ usage:
   ratchet init [--force]
   ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"]
   ratchet task status
+  ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet check [--timeout 120000]
@@ -646,6 +675,9 @@ switch (cmd) {
     break;
   case "prompt":
     commandPrompt(args);
+    break;
+  case "report":
+    commandReport(args);
     break;
   case "guard":
     commandGuard(args);

@@ -176,6 +176,28 @@ test("install: claude hook is idempotent and preserves settings", () => {
   assert.equal(second.hooks.PreToolUse.length, 1);
 });
 
+test("install: codex hook is merged, idempotent, and removable", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const hooksFile = path.join(dir, ".codex/hooks.json");
+  fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
+  fs.writeFileSync(hooksFile, JSON.stringify({ hooks: { PostToolUse: [] } }, null, 2));
+
+  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"]).status, 0);
+  const first = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+  assert.equal(first.hooks.PostToolUse.length, 0);
+  assert.equal(first.hooks.PreToolUse.length, 1);
+  assert.match(first.hooks.PreToolUse[0].hooks[0].command, /adapters\/codex\/hook\.mjs/);
+
+  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"]).status, 0);
+  const second = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+  assert.equal(second.hooks.PreToolUse.length, 1);
+
+  assert.equal(ratchet(dir, ["uninstall", "--harness", "codex", "--project"]).status, 0);
+  const third = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+  assert.equal(third.hooks.PreToolUse.length, 0);
+});
+
 test("install: dry run writes nothing", () => {
   const dir = session();
   ratchet(dir, ["init"]);
