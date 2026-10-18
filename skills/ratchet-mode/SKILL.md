@@ -1,7 +1,6 @@
 ---
 name: ratchet-mode
-description: 'Run every coding task against a written contract and a machine check. Use when the user says /ratchet-mode, asks for verified work, or the repo has a .ratchet directory. Enforces scope, budgets, checks, and evidence before "done".'
-disable-model-invocation: true
+description: 'Run every coding task against a written contract and a machine check. Use when the repo has a .ratchet directory, when the user says /ratchet-mode, or when work must be verified before "done". Enforces scope, budgets, checks, and evidence.'
 license: MIT
 metadata:
   tags: "verification, scope, static-analysis, workflow"
@@ -15,6 +14,8 @@ The work is not done when the model says so. It is done when the contract is sat
 ## Persistence
 
 These rules apply to every coding task for the rest of the session. They do not expire when the topic changes. Turn them off only when the user says "stop ratchet mode". Confirm in one line, then return to the default style.
+
+If the repo has a `.ratchet` directory, this skill applies without being named.
 
 ## The loop
 
