@@ -1,5 +1,6 @@
 /**
- * OpenCode adapter. Install as .opencode/plugin/ratchet.js (ratchet sync --install).
+ * OpenCode adapter. Install as .opencode/plugins/ratchet.js with:
+ * ratchet install --harness opencode --project --yes
  *
  * OpenCode calls this before built-in tools. Throwing aborts the tool call and
  * returns the message to the model. MCP tools and subagent calls may bypass

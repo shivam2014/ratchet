@@ -52,16 +52,25 @@ ratchet init
 
 `ratchet init` detects `package.json` scripts (`check`, `lint`, `typecheck`, `test`, `build`) and writes `.ratchet/config.json`.
 
-## Harness adapters
+## Install for your harnesses
 
-| Harness | Adapter | In-loop strength |
+```bash
+ratchet install --harness pi,claude,opencode,t3,codex --project --yes
+ratchet status
+```
+
+`--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
+
+| Harness | What `install` writes | In-loop strength |
 |---|---|---|
-| pi | `adapters/pi/ratchet.ts` | strong: `tool_call` hook |
-| Claude Code | `adapters/claude/` + `settings.json` | strong: `PreToolUse` |
-| OpenCode / T3 Code | `adapters/opencode/ratchet.js` | partial: built-in tools only; subagents and MCP may bypass |
-| Cursor | same `PreToolUse` shape as Claude | strong, verify current hook config |
-| Codex | no portable pre-tool hook assumed | out-of-loop only: sandbox + CI |
-| Anything else | `ratchet guard` on stdin | depends on the harness |
+| pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `tool_call` hook |
+| Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
+| OpenCode | `.opencode/plugins/ratchet.js`, `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
+| T3 Code | the same OpenCode plugin and skill | partial: same gap as OpenCode |
+| Codex | `.agents/skills/ratchet-mode` | none: no portable pre-tool hook; use sandbox + CI |
+| Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
+
+Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, and `~/.agents/skills`.
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
 
@@ -71,11 +80,25 @@ The adapter is deliberately thin. It normalises one tool call to JSON, calls `ra
 
 `ratchet guard` returns `{"allow":true|false,"reason":"...","paths":[...]}` and exits 0 or 2. `--format claude` emits the `PreToolUse` JSON shape.
 
+## Kill switch
+
+```bash
+ratchet disable --reason "false positive on generated files"
+ratchet enable
+ratchet status
+```
+
+`disable` writes `.ratchet/disabled.json`. The guard allows tool calls and records that it was disabled; `ratchet check` and `ratchet done` still work. `status` and `doctor` show the reason loudly. This is for a bad guard, not for a failing check.
+
 ## Commands
 
 | Command | Does |
 |---|---|
 | `ratchet init` | Detect checks, write `.ratchet/config.json` and `rules.tsv` |
+| `ratchet install` | Install adapters and skills for one or more harnesses |
+| `ratchet uninstall` | Remove only the files Ratchet recorded |
+| `ratchet status` | Show the contract, installed harnesses, and enabled/disabled state |
+| `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
 | `ratchet task start` | Write a contract and make it current |
 | `ratchet task status` | Show scope, budgets, and check state |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
@@ -130,4 +153,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix.
+See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.

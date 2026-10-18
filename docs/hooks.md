@@ -83,7 +83,7 @@ export const Ratchet = async ({ directory }) => ({
 
 OpenCode turns a thrown error into a failed tool call and shows the message to the model.
 
-Install with `ratchet sync --install`, which writes `.opencode/plugin/ratchet.js`.
+Install with `ratchet sync --install`, or `ratchet install --harness opencode --project --yes`, which writes `.opencode/plugins/ratchet.js`.
 
 ### Claude Code
 

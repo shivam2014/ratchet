@@ -132,3 +132,56 @@ test("e2e: sync is idempotent and detects drift", () => {
   fs.writeFileSync(path.join(dir, "AGENTS.md"), first.replace("Every non-trivial task", "Every task"));
   assert.equal(ratchet(dir, ["sync", "--check"]).status, 1);
 });
+
+test("install: opencode plugin, kill switch, uninstall", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const install = ratchet(dir, ["install", "--harness", "opencode", "--project", "--yes"]);
+  assert.equal(install.status, 0, install.stderr);
+  assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), true);
+  assert.equal(fs.existsSync(path.join(dir, ".agents/skills/ratchet-mode")), true);
+
+  assert.equal(ratchet(dir, ["disable", "--reason", "test"]).status, 0);
+  const allowed = ratchet(dir, ["guard"], event("write", { path: "lib/x.ts" }, dir));
+  assert.equal(allowed.status, 0);
+  assert.match(allowed.stdout, /disabled/);
+
+  ratchet(dir, ["enable"]);
+  const blocked = ratchet(dir, ["guard"], event("write", { path: "lib/x.ts" }, dir));
+  assert.equal(blocked.status, 2);
+
+  const status = ratchet(dir, ["status"]);
+  assert.match(status.stdout, /opencode/);
+
+  const un = ratchet(dir, ["uninstall", "--harness", "opencode", "--project"]);
+  assert.equal(un.status, 0, un.stderr);
+  assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), false);
+  assert.equal(fs.existsSync(path.join(dir, ".agents/skills/ratchet-mode")), false);
+});
+
+test("install: claude hook is idempotent and preserves settings", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const claude = path.join(dir, ".claude/settings.json");
+  fs.mkdirSync(path.dirname(claude), { recursive: true });
+  fs.writeFileSync(claude, JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }, null, 2));
+
+  assert.equal(ratchet(dir, ["install", "--harness", "claude", "--project", "--yes"]).status, 0);
+  const first = JSON.parse(fs.readFileSync(claude, "utf8"));
+  assert.deepEqual(first.permissions, { allow: ["Bash(ls)"] });
+  assert.equal(first.hooks.PreToolUse.length, 1);
+
+  assert.equal(ratchet(dir, ["install", "--harness", "claude", "--project", "--yes"]).status, 0);
+  const second = JSON.parse(fs.readFileSync(claude, "utf8"));
+  assert.equal(second.hooks.PreToolUse.length, 1);
+});
+
+test("install: dry run writes nothing", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const result = ratchet(dir, ["install", "--harness", "opencode", "--project", "--yes", "--dry-run"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /dry run/);
+  assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), false);
+  assert.equal(fs.existsSync(path.join(dir, ".ratchet/install.json")), false);
+});

@@ -195,6 +195,8 @@ Do not rewrite it. Extract the kernel and keep the extension as the reference ad
 
 - Contract creation with role, scope, deny list, budgets, and verification commands.
 - `ratchet prompt` renders the contract brief for a system prompt, from the same state the guard reads.
+- Multi-harness installer with auto-detection, explicit `--harness` selection, `--user`/`--project` scope, `--dry-run`, a written manifest, and exact uninstall.
+- A recorded kill switch: `ratchet disable --reason`, `ratchet enable`, visible in `status` and `doctor`.
 - Write and bash guard with fail-closed scope, deny patterns, distinct-file and write budgets.
 - Coarse bash classification: redirects, write verbs, `git` write subcommands, package-manager mutations, hard denies.
 - Check runner with captured evidence and a `done` gate.

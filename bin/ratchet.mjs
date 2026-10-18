@@ -34,8 +34,23 @@ import {
 import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
 import { auditRules } from "../lib/rules.mjs";
+import { syncAgents } from "../lib/agents-md.mjs";
+import {
+  ORDER,
+  LABEL,
+  detectHarnesses,
+  installHarness,
+  uninstallHarness,
+  loadManifest,
+  saveManifest,
+} from "../lib/harnesses.mjs";
+import readline from "node:readline/promises";
 
-const BOOLEAN = new Set(["force", "read-only", "json", "check", "install", "all", "help", "version"]);
+const BOOLEAN = new Set([
+  "force", "read-only", "json", "check", "install", "all", "help", "version",
+  "user", "project", "yes", "dry-run", "global",
+]);
+
 
 function parseArgs(argv) {
   const positional = [];
@@ -125,6 +140,7 @@ function commandInit(args) {
   out(`checks: ${config.checks.length ? config.checks.map((c) => c.id).join(", ") : "none detected"}`);
   out("");
   out("next:");
+  out(`  ratchet install --project --harness pi,claude,opencode,t3`);
   out(`  ratchet task start --role coder --goal "what you are changing" --scope "src/**"`);
   out("  ratchet check");
   out("  ratchet done");
@@ -211,6 +227,15 @@ function claudeDecision(decision) {
   });
 }
 
+function disabledPath(root) {
+  return path.join(stateDir(root), "disabled.json");
+}
+
+function disabledState(root) {
+  const state = readJson(disabledPath(root), null);
+  return state?.disabled ? state : null;
+}
+
 function commandGuard(args) {
   const raw = fs.readFileSync(0, "utf8").trim();
   if (!raw) fail("guard expects a JSON event on stdin");
@@ -222,7 +247,17 @@ function commandGuard(args) {
   }
   const event = normaliseEvent(parsed);
   const root = findRoot(event.cwd || process.cwd());
-  const decision = decide(root, event);
+  const disabled = disabledState(root);
+  const decision = disabled
+    ? {
+        allow: true,
+        reason: `ratchet disabled: ${disabled.reason}`,
+        paths: [],
+        op: "other",
+        runId: loadRun(root)?.id ?? null,
+        disabled: true,
+      }
+    : decide(root, event);
   record(root, event, decision);
 
   const format = String(args.one("format", "default"));
@@ -328,102 +363,208 @@ function commandAudit(args) {
 function commandDoctor() {
   const root = findRoot(process.cwd());
   const checks = [];
-  const add = (name, ok, detail = "") => checks.push({ name, ok, detail });
-  add("git repo", fs.existsSync(path.join(root, ".git")), root);
-  add(".ratchet/config.json", fs.existsSync(configPath(root)), configPath(root));
+  const add = (name, ok, detail = "", hard = false) => checks.push({ name, ok, detail, hard });
+  add("git repo", fs.existsSync(path.join(root, ".git")), root, true);
+  add(".ratchet/config.json", fs.existsSync(configPath(root)), configPath(root), true);
   const config = loadConfig(root);
-  add("config version", config?.version === 1, String(config?.version ?? "missing"));
-  add("checks configured", Boolean(config?.checks?.length), `${config?.checks?.length ?? 0}`);
+  add("config version", config?.version === 1, String(config?.version ?? "missing"), true);
+  add("checks configured", Boolean(config?.checks?.length), `${config?.checks?.length ?? 0}`, true);
   const contract = loadRun(root);
   add("active contract", Boolean(contract), contract?.id ?? "none");
   add("rules.tsv", fs.existsSync(path.join(stateDir(root), "rules.tsv")), path.join(stateDir(root), "rules.tsv"));
-  add("opencode adapter", fs.existsSync(path.join(root, ".opencode/plugin/ratchet.js")), ".opencode/plugin/ratchet.js");
-  for (const c of checks) out(`${c.ok ? "PASS" : "WARN"}  ${c.name}  ${c.detail}`);
-  const hard = checks.slice(0, 4).filter((c) => !c.ok);
-  process.exit(hard.length ? 1 : 0);
+  const disabled = disabledState(root);
+  add("ratchet enabled", !disabled, disabled ? `DISABLED: ${disabled.reason}` : "enabled");
+  const manifest = loadManifest(root);
+  for (const [name, record] of Object.entries(manifest.installed)) {
+    const paths = record.paths ?? [];
+    const ok = paths.length > 0 && paths.every((p) => fs.lstatSync(p, { throwIfNoEntry: false }));
+    add(`${LABEL[name] ?? name} adapter`, ok, `${record.scope}: ${paths.join(", ")}`);
+  }
+  for (const c of checks) out(`${c.ok ? "PASS" : c.hard ? "FAIL" : "WARN"}  ${c.name}  ${c.detail}`);
+  process.exit(checks.some((c) => c.hard && !c.ok) ? 1 : 0);
 }
 
-const MANAGED_START = "<!-- ratchet:begin -->";
-const MANAGED_END = "<!-- ratchet:end -->";
-const MANAGED = `${MANAGED_START}
-## Ratchet workflow (managed)
+function installContext(root, args) {
+  return {
+    root,
+    repoRoot: path.join(import.meta.dirname, ".."),
+    home: process.env.HOME || "",
+    scope: args.has("user") || args.has("global") ? "user" : "project",
+    force: args.has("force"),
+    dryRun: args.has("dry-run"),
+    actions: [],
+    warnings: [],
+  };
+}
 
-Every non-trivial task starts with a contract and ends with evidence.
+function installGitHook(root, ctx) {
+  if (!fs.existsSync(path.join(root, ".git"))) return;
+  const src = path.join(ctx.repoRoot, "adapters", "git", "pre-commit");
+  const dest = path.join(root, ".git", "hooks", "pre-commit");
+  if (fs.existsSync(dest) && !readText(dest, "").includes("ratchet") && !ctx.force) {
+    ctx.warnings.push(`git: ${dest} exists and is not ours; use --force to replace`);
+    return;
+  }
+  const content = readText(src, "");
+  if (fs.existsSync(dest) && readText(dest, "") === content) {
+    ctx.actions.push(`unchanged ${dest}`);
+    return;
+  }
+  ctx.actions.push(`${fs.existsSync(dest) ? "update" : "create"} ${dest}`);
+  if (!ctx.dryRun) {
+    ensureDir(path.dirname(dest));
+    fs.copyFileSync(src, dest);
+    fs.chmodSync(dest, 0o755);
+  }
+}
 
-1. \`ratchet task start --role coder --goal "<goal>" --scope "<glob>"\`
-2. Work. Writes outside the contract are denied by the adapter.
-3. \`ratchet check\`
-4. \`ratchet done\`
+async function selectHarnesses(args, detected) {
+  const explicit = args
+    .all("harness")
+    .flatMap((v) => String(v).split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (explicit.length) return explicit;
 
-Rules are enforced in this order: architecture and types, lint and CI, tests, prose. Do not edit \`.ratchet/\`, bypass a hook with \`--no-verify\`, or widen scope silently.
-${MANAGED_END}`;
+  const available = ORDER.filter((h) => detected[h]);
+  if (args.has("all") || args.has("yes") || !process.stdin.isTTY) return available;
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (
+    await rl.question(`Detected: ${available.join(", ") || "none"}\nInstall for [all/${ORDER.join(",")}] (all): `)
+  ).trim();
+  rl.close();
+  if (!answer || answer === "all") return available;
+  return answer.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+async function commandInstall(args) {
+  const root = findRoot(process.cwd());
+  if (!fs.existsSync(configPath(root))) fail("No .ratchet/config.json. Run: ratchet init");
+  const detected = detectHarnesses();
+  const names = [...new Set(await selectHarnesses(args, detected))];
+  if (!names.length) fail(`No harness detected. Pass --harness ${ORDER.join("|")}.`);
+
+  const ctx = installContext(root, args);
+  const manifest = loadManifest(root);
+
+  for (const name of names) {
+    if (!ORDER.includes(name)) fail(`unknown harness: ${name}`);
+    const paths = installHarness(name, ctx);
+    manifest.installed[name] = { scope: ctx.scope, paths, at: new Date().toISOString() };
+  }
+
+  installGitHook(root, ctx);
+  if (ctx.scope === "project") {
+    const sync = syncAgents(root, { check: ctx.dryRun });
+    ctx.actions.push(`${sync.changed ? "update" : "unchanged"} ${sync.file}`);
+  }
+  if (!ctx.dryRun) saveManifest(root, manifest);
+
+  for (const action of ctx.actions) out(action);
+  for (const warning of ctx.warnings) out(`WARN  ${warning}`);
+  out(ctx.dryRun ? "dry run: nothing written" : `installed: ${names.join(", ")} (${ctx.scope})`);
+}
+
+function commandUninstall(args) {
+  const root = findRoot(process.cwd());
+  const manifest = loadManifest(root);
+  const explicit = args
+    .all("harness")
+    .flatMap((v) => String(v).split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const selected = explicit.length ? explicit : Object.keys(manifest.installed);
+  if (!selected.length) {
+    out("nothing installed");
+    return;
+  }
+
+  const ctx = installContext(root, args);
+  const protect = new Set(
+    Object.entries(manifest.installed)
+      .filter(([name]) => !selected.includes(name))
+      .flatMap(([, record]) => record.paths ?? []),
+  );
+  for (const name of selected) {
+    const record = manifest.installed[name];
+    if (!record) {
+      out(`skip ${name} (not installed)`);
+      continue;
+    }
+    uninstallHarness(name, { ...ctx, scope: record.scope ?? ctx.scope }, record, protect);
+    delete manifest.installed[name];
+  }
+  if (!ctx.dryRun) saveManifest(root, manifest);
+  for (const action of ctx.actions) out(action);
+  for (const warning of ctx.warnings) out(`WARN  ${warning}`);
+  out(ctx.dryRun ? "dry run: nothing removed" : `uninstalled: ${selected.join(", ")}`);
+}
+
+function commandDisable(args) {
+  const root = findRoot(process.cwd());
+  if (!fs.existsSync(stateDir(root))) fail("No .ratchet directory. Run: ratchet init");
+  const reason = String(args.one("reason", "no reason given"));
+  writeJson(disabledPath(root), {
+    disabled: true,
+    reason,
+    at: new Date().toISOString(),
+    by: process.env.USER || null,
+  });
+  out(`ratchet DISABLED: ${reason}`);
+  out("The guard will allow tool calls. Checks still run. Re-enable with: ratchet enable");
+}
+
+function commandEnable() {
+  const root = findRoot(process.cwd());
+  const file = disabledPath(root);
+  if (fs.existsSync(file)) {
+    fs.rmSync(file, { force: true });
+    out("ratchet enabled");
+  } else {
+    out("ratchet is already enabled");
+  }
+}
+
+function commandStatus() {
+  const root = findRoot(process.cwd());
+  const contract = loadRun(root);
+  const disabled = disabledState(root);
+  const manifest = loadManifest(root);
+  out(`ratchet: ${disabled ? "DISABLED" : "enabled"}`);
+  if (disabled) out(`  since ${disabled.at}: ${disabled.reason}`);
+  out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}`);
+  const entries = Object.entries(manifest.installed);
+  if (!entries.length) {
+    out("installed: none");
+    return;
+  }
+  out("installed:");
+  for (const [name, record] of entries) {
+    out(`  ${name.padEnd(9)} ${record.scope.padEnd(8)} ${record.paths.join(", ")}`);
+  }
+}
 
 function commandSync(args) {
   const root = findRoot(process.cwd());
-  const file = path.join(root, "AGENTS.md");
-  const current = readText(file, "");
-  let next;
-  if (current.includes(MANAGED_START) && current.includes(MANAGED_END)) {
-    next = current.replace(new RegExp(`${MANAGED_START}[\\s\\S]*?${MANAGED_END}`), MANAGED);
-  } else {
-    next = (current.trimEnd() + "\n\n" + MANAGED + "\n").trimStart();
-  }
-
+  const result = syncAgents(root, { check: args.has("check") });
   if (args.has("check")) {
-    const ok = next === current;
-    if (!ok) {
+    if (result.changed) {
       out("DRIFT: AGENTS.md is not in sync with .ratchet. Run: ratchet sync");
       process.exit(1);
     }
     out("AGENTS.md is in sync");
     return;
   }
-
-  writeText(file, next);
-  out(`synced ${file}`);
+  out(`synced ${result.file}`);
 
   if (args.has("install")) {
-    const adapter = path.join(import.meta.dirname, "..", "adapters", "opencode", "ratchet.js");
-    const target = path.join(root, ".opencode/plugin/ratchet.js");
-    ensureDir(path.dirname(target));
-    fs.copyFileSync(adapter, target);
-    out(`installed ${target}`);
-
-    const hook = path.join(import.meta.dirname, "..", "adapters", "git", "pre-commit");
-    const gitHook = path.join(root, ".git/hooks/pre-commit");
-    if (fs.existsSync(path.join(root, ".git"))) {
-      fs.copyFileSync(hook, gitHook);
-      fs.chmodSync(gitHook, 0o755);
-      out(`installed ${gitHook}`);
-    }
+    const ctx = installContext(root, args);
+    installHarness("opencode", ctx);
+    installGitHook(root, ctx);
+    for (const action of ctx.actions) out(action);
+    for (const warning of ctx.warnings) out(`WARN  ${warning}`);
   }
-}
-
-function commandInstall(args) {
-  const skill = path.join(import.meta.dirname, "..", "skills", "ratchet-mode");
-  const home = process.env.HOME || "";
-  const targets = args.has("project")
-    ? [
-        path.join(process.cwd(), ".agents/skills/ratchet-mode"),
-        path.join(process.cwd(), ".claude/skills/ratchet-mode"),
-        path.join(process.cwd(), ".opencode/skills/ratchet-mode"),
-      ]
-    : [
-        path.join(home, ".agents/skills/ratchet-mode"),
-        path.join(home, ".pi/agent/skills/ratchet-mode"),
-        path.join(home, ".claude/skills/ratchet-mode"),
-      ];
-
-  for (const target of targets) {
-    ensureDir(path.dirname(target));
-    if (fs.existsSync(target)) {
-      out(`skip ${target} (exists)`);
-      continue;
-    }
-    fs.symlinkSync(skill, target, "dir");
-    out(`linked ${target}`);
-  }
-  out("skill installed. Add the always-on project block with: ratchet sync");
 }
 
 function commandPrompt(args) {
@@ -474,7 +615,11 @@ usage:
   ratchet audit [--json]
   ratchet doctor
   ratchet sync [--check] [--install]
-  ratchet install [--project]                 # link the skill into harness skill dirs
+  ratchet install [--harness pi,claude,opencode,t3,codex] [--user|--project] [--all] [--dry-run] [--yes]
+  ratchet uninstall [--harness ...] [--dry-run]
+  ratchet status
+  ratchet disable --reason "..."
+  ratchet enable
 
 layers: code > types > lint > CI > tests > prose. A rule that nothing enforces is a wish.`);
 }
@@ -521,7 +666,19 @@ switch (cmd) {
     commandSync(args);
     break;
   case "install":
-    commandInstall(args);
+    await commandInstall(args);
+    break;
+  case "uninstall":
+    commandUninstall(args);
+    break;
+  case "enable":
+    commandEnable();
+    break;
+  case "disable":
+    commandDisable(args);
+    break;
+  case "status":
+    commandStatus();
     break;
   default:
     usage();
