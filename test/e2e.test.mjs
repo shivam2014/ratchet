@@ -37,6 +37,11 @@ test("e2e: contract allows in-scope, blocks out-of-scope, records evidence", () 
   ]);
   assert.equal(start.status, 0, start.stderr);
 
+  const prompt = ratchet(dir, ["prompt"]);
+  assert.equal(prompt.status, 0, prompt.stderr);
+  assert.match(prompt.stdout, /Goal: add a file/);
+  assert.match(prompt.stdout, /Write scope: src\/\*\*/);
+
   const ok = ratchet(dir, ["guard"], event("write", { path: "src/a.ts", content: "x" }, dir));
   assert.equal(ok.status, 0, ok.stderr);
 

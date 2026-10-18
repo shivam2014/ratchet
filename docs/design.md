@@ -89,7 +89,29 @@ The packaging standard already exists:
 - **Agent Plugins 1.0.0** (`plugin.json`, `skills/`, `mcp.json`) is the portable distribution format. pstack already uses its schema.
 - Hooks and subagents are not portable in Agent Plugins 1.0.0. That is exactly why the policy must live in the CLI and the adapter must be thin.
 
-## 6. The four layers, made concrete
+## 6. What about system prompting?
+
+The pi extension does three different jobs with its system prompt. They need different treatment.
+
+| Prompt job | Example | Keep it? | Ratchet mechanism |
+|---|---|---|---|
+| Capability docs | tool syntax, specialist roster, scope shape | Yes, but generate it | Tool registry, `ratchet prompt` |
+| Hard invariants | scope required, read-only, budgets, plan first | No, gate it | `ratchet guard`, `delegate()` validation |
+| Judgment and routing | start cheap, escalate on difficulty, when to use fusion | Yes, as a playbook | Skill, plus outcome checks |
+
+The rule is: **no invariant may exist only in the prompt.** A prompt line is allowed if it explains a gate, carries the current contract, or teaches a judgment call. If the prompt is the only thing preventing a bad action, that is a bug, because the prompt competes with everything else in the context window.
+
+Concretely, migrate `prompt-builder.ts` like this:
+
+1. Replace the static policy sections with `ratchet prompt` output: goal, role, scope, budgets, verify command. The brief is rendered from the contract, so it cannot drift from the guard.
+2. Keep the adaptive routing ladder, but treat it as a playbook, not a guarantee. Enforce the outcomes: if `recommend=review`, require a reviewer delegation before `done`; if `verification=fail`, block `done` until a check passes.
+3. Delete lines that repeat a gate. Keep one line that points at the gate's error message. For example, "scope required" becomes "writes outside the contract are denied; finish within scope or start a wider contract."
+4. Extend `ssot-drift.test.ts` to snapshot the prompt and fail when a hard rule is added without a corresponding check or guard.
+5. Measure the prompt. If it grows, the extra text is either a missing check or a missing decision procedure. Both should become code or a skill, not another paragraph.
+
+This is the difference between a manual and a law. The skill is the manual: it tells the model how to use the boundary. The guard and CI are the law. If the model ignores the manual, the law still holds.
+
+## 7. The four layers, made concrete
 
 ### Layer 1: codebase
 
@@ -125,7 +147,7 @@ Enforced by: nothing. Keep it short, and pair every repeated correction with a l
 
 Enforced by: branch protection, review requirements, and the decision to automate the rest.
 
-## 7. Harness matrix
+## 8. Harness matrix
 
 | Harness | Skill discovery | In-loop hook | Subagent/MCP gap | Authoritative layer |
 |---|---|---|---|---|
@@ -138,7 +160,7 @@ Enforced by: branch protection, review requirements, and the decision to automat
 
 The OpenCode gap is not a bug in Ratchet. It is the reason the out-of-loop gate is mandatory. A security control that only covers the main agent's built-in tools is a speed bump.
 
-## 8. Migrating the pi orchestrator
+## 9. Migrating the pi orchestrator
 
 Do not rewrite it. Extract the kernel and keep the extension as the reference adapter.
 
@@ -169,9 +191,10 @@ Do not rewrite it. Extract the kernel and keep the extension as the reference ad
 - `ratchet audit` refuses a rule with no enforcer or no proof.
 - Delete prose that a check now carries.
 
-## 9. What v0 implements
+## 10. What v0 implements
 
 - Contract creation with role, scope, deny list, budgets, and verification commands.
+- `ratchet prompt` renders the contract brief for a system prompt, from the same state the guard reads.
 - Write and bash guard with fail-closed scope, deny patterns, distinct-file and write budgets.
 - Coarse bash classification: redirects, write verbs, `git` write subcommands, package-manager mutations, hard denies.
 - Check runner with captured evidence and a `done` gate.
@@ -180,7 +203,7 @@ Do not rewrite it. Extract the kernel and keep the extension as the reference ad
 - Adapters for pi, OpenCode, and Claude Code, plus a git pre-commit hook.
 - 17 tests, including an end-to-end contract/block/check/done proof.
 
-## 10. What v0 does not implement
+## 11. What v0 does not implement
 
 - Full shell parsing. The pi classifier is stronger and should replace the coarse one.
 - MCP tool interception. Treat MCP tools as out-of-scope mutations and gate them at the server or CI.
@@ -189,7 +212,7 @@ Do not rewrite it. Extract the kernel and keep the extension as the reference ad
 - Repo history mining. `/correct` is a skill workflow in v0, not an automated miner.
 - Published packaging. The CLI is local; the skill is already in Agent Skills format.
 
-## 11. The next three moves
+## 12. The next three moves
 
 1. Run one real task in this repo under a contract with the OpenCode adapter installed. Record the blocked write and the passing check.
 2. Add `ratchet check` to CI and make it required. That is the first boundary the model cannot edit.

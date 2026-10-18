@@ -426,6 +426,40 @@ function commandInstall(args) {
   out("skill installed. Add the always-on project block with: ratchet sync");
 }
 
+function commandPrompt(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const state = loadState(root, contract.id);
+  const brief = {
+    run: contract.id,
+    goal: contract.goal,
+    role: contract.role,
+    readOnly: contract.readOnly,
+    writeScope: contract.scope,
+    denied: contract.deny,
+    budgets: contract.budgets,
+    used: { files: state.files.size, writes: state.writes },
+    verify: contract.verify.map((v) => v.cmd),
+  };
+  if (args.has("json")) {
+    out(JSON.stringify(brief, null, 2));
+    return;
+  }
+  out(`## Task contract ${contract.id}`);
+  out(`Goal: ${contract.goal}`);
+  out(`Role: ${contract.role}${contract.readOnly ? " (read-only)" : ""}`);
+  out(`Write scope: ${contract.scope.join(", ") || "(none)"}`);
+  out(`Denied: ${contract.deny.join(", ") || "(none)"}`);
+  out(`Budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`);
+  out(`Verify: ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
+  out("");
+  out("Enforced by the guard, not by this prompt:");
+  out("- Writes outside the scope are denied. Reads are allowed.");
+  out("- `ratchet done` refuses without a passing `ratchet check`.");
+  out("");
+  out("If a write is blocked, finish within scope or start a new contract with a wider scope.");
+}
+
 function usage() {
   out(`ratchet - contract-enforced agent workflow
 
@@ -433,6 +467,7 @@ usage:
   ratchet init [--force]
   ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"]
   ratchet task status
+  ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet check [--timeout 120000]
   ratchet done
@@ -463,6 +498,9 @@ switch (cmd) {
     break;
   case "task":
     commandTask(args);
+    break;
+  case "prompt":
+    commandPrompt(args);
     break;
   case "guard":
     commandGuard(args);

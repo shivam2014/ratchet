@@ -57,6 +57,7 @@ The adapter is deliberately thin. It normalises one tool call to JSON, calls `ra
 | `ratchet init` | Detect checks, write `.ratchet/config.json` and `rules.tsv` |
 | `ratchet task start` | Write a contract and make it current |
 | `ratchet task status` | Show scope, budgets, and check state |
+| `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, save evidence |
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
