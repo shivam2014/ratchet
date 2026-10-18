@@ -9,3 +9,4 @@ codex-hook-resolves-cli	code	adapters/codex/hook.mjs	docs/codex-test.md first fi
 apply-patch-heredoc	code	lib/classify.mjs + test/classify.test.mjs	test/classify.test.mjs apply_patch heredoc (Codex bypass)
 opencode-v2-plugin-shape	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs id: "ratchet"
 claude-absolute-hook-command	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs claude format
+pstack-skill-gates	code	lib/decide.mjs + test/decide.test.mjs	test/decide.test.mjs skill gate denies until artifact

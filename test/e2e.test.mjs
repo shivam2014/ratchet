@@ -223,6 +223,27 @@ test("guard: claude format allows in scope and denies out of scope", () => {
   assert.equal(allow.stdout.trim(), "");
 });
 
+test("e2e: --pstack gate blocks source until the plan and sketch exist", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const start = ratchet(dir, ["task", "start", "--role", "coder", "--goal", "g", "--scope", "src/**", "--pstack"]);
+  assert.equal(start.status, 0, start.stderr);
+
+  const blocked = ratchet(dir, ["guard"], event("write", { path: "src/a.ts" }, dir));
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /Skill gate/);
+
+  const plan = ratchet(dir, ["guard"], event("write", { path: ".ratchet/plan.md", content: "# Plan" }, dir));
+  assert.equal(plan.status, 0, plan.stderr);
+
+  fs.mkdirSync(path.join(dir, ".ratchet"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".ratchet/plan.md"), "# Plan\n");
+  fs.writeFileSync(path.join(dir, ".ratchet/sketch.md"), "# Sketch\n");
+
+  const allowed = ratchet(dir, ["guard"], event("write", { path: "src/a.ts" }, dir));
+  assert.equal(allowed.status, 0, allowed.stderr);
+});
+
 test("install: dry run writes nothing", () => {
   const dir = session();
   ratchet(dir, ["init"]);

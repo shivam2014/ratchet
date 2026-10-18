@@ -49,7 +49,7 @@ import readline from "node:readline/promises";
 
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
-  "user", "project", "yes", "dry-run", "global",
+  "user", "project", "yes", "dry-run", "global", "pstack",
 ]);
 
 
@@ -176,12 +176,30 @@ function commandTask(args) {
     fail('task start needs --scope (for example --scope "src/**" --scope "tests/**"), or pass --read-only.');
   }
   const deny = [...(config.defaults?.deny ?? []), ...args.all("deny")];
+  const gates = args.has("pstack")
+    ? [
+        {
+          artifact: ".ratchet/plan.md",
+          before: ["src/**", "index.html", "styles.css"],
+          message: "pstack /poteto-mode: write the chosen playbook and its steps to .ratchet/plan.md first",
+        },
+        {
+          artifact: ".ratchet/sketch.md",
+          before: ["src/**", "index.html", "styles.css"],
+          message: "pstack /architect: sketch the types, signatures, and module shape in .ratchet/sketch.md first",
+        },
+      ]
+    : config.gates ?? [];
+  const scoped = gates.length
+    ? [...new Set([...scope, ...gates.map((gate) => gate.artifact)])]
+    : scope;
   const contract = createContract(root, {
     goal,
     role,
     readOnly,
-    scope,
+    scope: scoped,
     deny,
+    gates,
     maxFiles: Number(args.one("max-files", config.defaults?.maxFiles ?? 12)),
     maxWrites: Number(args.one("max-writes", config.defaults?.maxWrites ?? 60)),
     verify: args.all("verify").length
@@ -193,6 +211,7 @@ function commandTask(args) {
   out(`contract ${path.join(runDir(root, contract.id), "contract.json")}`);
   out(`scope:   ${contract.scope.join(", ")}`);
   out(`budgets: ${contract.budgets.maxFiles} files, ${contract.budgets.maxWrites} writes`);
+  if (contract.gates?.length) out(`gates:   ${contract.gates.map((g) => g.artifact).join(", ")}`);
   out(`verify:  ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
 }
 
@@ -656,7 +675,7 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"]
+  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack]
   ratchet task status
   ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt

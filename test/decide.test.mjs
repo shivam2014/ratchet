@@ -98,6 +98,29 @@ test("decide: unresolved bash mutation is allowed and marked", (t) => {
   assert.equal(decision.unresolved, true);
 });
 
+test("decide: skill gate denies source writes until the artifact exists", (t) => {
+  const root = emptyRepo(t);
+  const contract = createContract(root, {
+    goal: "gate",
+    role: "coder",
+    scope: ["src/**", ".ratchet/plan.md"],
+    gates: [{ artifact: ".ratchet/plan.md", before: ["src/**"], message: "write the plan first" }],
+  });
+  saveContract(root, contract);
+
+  const denied = decide(root, event("write", { path: "src/a.ts" }));
+  assert.equal(denied.allow, false);
+  assert.match(denied.reason, /write the plan first/);
+
+  const artifact = decide(root, event("write", { path: ".ratchet/plan.md" }));
+  assert.equal(artifact.allow, true);
+
+  fs.mkdirSync(path.join(root, ".ratchet"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".ratchet", "plan.md"), "# Plan\n1. step\n");
+  const allowed = decide(root, event("write", { path: "src/a.ts" }));
+  assert.equal(allowed.allow, true);
+});
+
 test("decide: file budget blocks a new path", (t) => {
   const { root, contract } = repo(t, { maxFiles: 1 });
   record(root, event("write", { path: "src/a.ts" }), {

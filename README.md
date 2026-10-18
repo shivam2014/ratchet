@@ -82,7 +82,9 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny |
 | Cursor | none | Not tested | Not installed; no adapter claimed |
 
-`npm test` runs 73 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+`npm test` runs 75 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+
+Ratchet can enforce the actual pstack skills: install them as Agent Skills, then start a task with `--pstack` to gate source writes behind the `/poteto-mode` plan and the `/architect` sketch. See [docs/pstack.md](docs/pstack.md).
 
 See [docs/test-matrix.md](docs/test-matrix.md) for the full feature-to-test map and the bugs the tests caught.
 
@@ -113,7 +115,7 @@ ratchet status
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current |
+| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts |
 | `ratchet task status` | Show scope, budgets, and check state |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
