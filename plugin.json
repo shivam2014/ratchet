@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ratchet",
+  "version": "0.1.0",
+  "description": "Contract-enforced agent workflow: scope, budgets, checks, and evidence before done.",
+  "author": { "name": "Shivam" },
+  "license": "MIT",
+  "keywords": ["verification", "scope", "static-analysis", "workflow", "agents"]
+}

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Local feedback. CI is the authority; --no-verify is still possible.
+exec ratchet check

@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+.ratchet/runs/
+.ratchet/last-check.json

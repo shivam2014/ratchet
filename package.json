@@ -1,0 +1,13 @@
+{
+  "name": "ratchet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Harness-neutral contract and verification gate for coding agents.",
+  "bin": { "ratchet": "./bin/ratchet.mjs" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "demo": "bash test/demo.sh"
+  },
+  "engines": { "node": ">=20" }
+}
