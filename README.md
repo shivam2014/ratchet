@@ -11,6 +11,27 @@ ratchet check     # runs the repo's own checks
 ratchet done      # refuses without passing evidence
 ```
 
+## No model backend
+
+Ratchet is a Node CLI with no model, no API key, and no network call. It does not generate replies and it does not see the full prompt or the model's prose.
+
+The split is:
+
+| Owner | Owns |
+|---|---|
+| Harness (pi, Claude Code, OpenCode/T3) | Prompt assembly, model choice, inference, tool dispatch |
+| Model | Reasoning and the response text |
+| Ratchet | Contract state, allow/deny on tool calls, check evidence |
+| Repo + CI | The commands that decide whether the change is good |
+
+Ratchet participates at three points only:
+
+1. **Before the loop**: `ratchet prompt` renders a deterministic Markdown brief from `contract.json`. It is string formatting, not generation.
+2. **During the loop**: the adapter sends one tool call as JSON to `ratchet guard`. The guard returns allow or deny from path, scope, and budget rules.
+3. **After the loop**: `ratchet check` runs the repo's own commands and records exit codes; `ratchet done` reads that evidence.
+
+If you later want model-assisted judgment, it belongs in an optional `ratchet judge` command whose output is an advisory artifact, not the authority. The deterministic checks stay the gate.
+
 ## Why
 
 Agent instructions decay. A `SKILL.md` or `AGENTS.md` line is a suggestion the model may skip at turn 40. A type error, a failing lint rule, a test, a denied write, or a red CI check is not.
