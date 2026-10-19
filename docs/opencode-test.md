@@ -1,6 +1,8 @@
 # OpenCode and T3 Code
 
-Tested on OpenCode 2.0.32 (the runtime T3 Code uses).
+> Historical: this records the OpenCode 2.0 runtime path. T3 Code is now its own harness; see [vision.md](vision.md) and [universal-integration.md](universal-integration.md) for the current T3 integration paths.
+
+Tested on OpenCode 2.0.32 (the runtime T3 Code used at the time).
 
 ## The 2.0 plugin API rewrite
 
@@ -67,5 +69,5 @@ PASS: done
 ## Limits
 
 - The plugin hook covers built-in tools. MCP tools and subagent calls may bypass it; CI remains the authority.
-- T3 Code uses the same OpenCode runtime, so the same plugin applies. T3's own MCP tools are not covered.
+- At the time, T3 Code used the same OpenCode runtime, so the same plugin applied. T3's own MCP tools were not covered. T3 is now its own harness; see [vision.md](vision.md) for the current paths.
 - The user's global `@warp-dot-dev/opencode-warp` plugin fails to load under 2.0 for the same v1-shape reason. That is unrelated to Ratchet, but it is why the plugin-load warning appears in any 2.0 log.

@@ -23,6 +23,20 @@ The pi extension is one adapter. Its policy moves into the core; its `before_age
 
 The broadest implementation of that protocol is an **ACP proxy**: one wrapper between any ACP editor and any ACP agent. The deepest implementation is **native hooks**: Codex, Claude, Cursor, pi. Use ACP for breadth and native hooks for depth.
 
+### The layers
+
+| Layer | What it is | Examples |
+|---|---|---|
+| **Model** | The intelligence | Claude, GPT, DeepSeek |
+| **Harness** | The program that owns the agent loop: prompt assembly, model calls, tool dispatch, permissions, session state | Codex, Claude Code, pi, OpenCode, Cursor Agent, T3 Code |
+| **ACP** | The protocol between an editor/client and a harness | Zed ↔ Claude, VS Code ↔ Codex, T3 ↔ an ACP agent |
+| **MCP** | The protocol between a harness and tools/resources | Harness ↔ database, browser, GitHub |
+| **Hook** | A harness-specific internal extension point | Codex `PreToolUse`, Claude `Stop`, pi `tool_call` |
+| **Ratchet** | Policy and verification around the loop | ACP proxy, native hook adapter, CLI |
+| **T3 Code** | A harness with a control plane over other harnesses | Runs its own threads and can drive Codex, Claude, Cursor, OpenCode, pi, ACP agents |
+
+A product can be both a harness and a control surface. T3 is the clear example: it owns its own thread/run lifecycle, and it can also orchestrate other harnesses.
+
 A model can be an **outer supervisor** for harnesses with no lifecycle API: it launches the harness, watches the workspace, runs Ratchet checks, and sends failures back. That is a valid fallback. It is not the trust boundary, because the checks are still deterministic and outside the model.
 
 ## What pi actually depends on
@@ -83,7 +97,7 @@ Not every harness needs the same depth. Use the strongest available tier, and al
 
 | Tier | What it gives | Harnesses | Limits |
 |---|---|---|---|
-| **1. Native lifecycle hooks** | Guidance + pre-tool guard + post-tool feedback + stop gate + evidence | Codex, Claude Code, Cursor, pi, OpenCode (partial) | Per-harness adapter; hook trust differs; MCP/subagent coverage varies |
+| **1. Native lifecycle hooks** | Guidance + pre-tool guard + post-tool feedback + stop gate + evidence | Codex, Claude Code, Cursor, pi, T3 (if its own lifecycle is exposed), OpenCode (partial) | Per-harness adapter; hook trust differs; MCP/subagent coverage varies |
 | **2. ACP proxy** | One protocol-level wrapper: prompt injection, permission/fs/terminal gates, tool-call events, turn-end checks, follow-up prompts | Any ACP agent; Claude, Codex, Cursor, OpenCode, pi via ACP adapters | Proxy RFD is draft; permission/tool reporting is optional; not a sandbox |
 | **3. Control-plane supervisor** | Create a thread, inject the brief, wait for completion, run checks, send failures back | T3 MCP; any harness with a control API | No pre-tool veto unless the underlying provider has hooks; post-hoc interrupt only |
 | **4. Wrapper** | Launch the harness, prepend the brief, run checks at the end | Any CLI harness | No in-loop guard or stop gate; the user can interrupt |
@@ -221,7 +235,9 @@ A model may choose among skills and may ask Ratchet for status or scope changes.
 
 ## T3 specifically
 
-T3 is not a single harness. It is a **control surface** over Codex, Claude, Cursor, OpenCode, pi, Grok, Antigravity, and ACP agents. It has a public orchestration MCP server that can:
+T3 is a **harness**. It owns its own thread/run lifecycle, and it can also act as a **control surface** over Codex, Claude, Cursor, OpenCode, pi, Grok, Antigravity, and ACP agents. The distinction is a role, not a product category: a harness can also orchestrate other harnesses.
+
+Its public orchestration MCP server can:
 
 - launch a top-level thread with a prompt and workspace strategy;
 - send/steer/queue a follow-up;
@@ -251,6 +267,12 @@ What this does not give you is a pre-tool veto. T3's MCP surface can read activi
 A native T3 provider adapter could expose pre-tool events, but that is a T3 change, not a Ratchet change. The MCP controller is the public, portable integration.
 
 T3 also supports **ACP providers**, including local ACP commands. That gives a second, simpler integration: register `ratchet acp -- <agent>` as a Local ACP command in T3, and the ACP proxy wraps that agent with the contract. Use ACP where the provider is ACP; use the MCP controller where T3 is running a native provider (Codex, Claude, Cursor, OpenCode).
+
+Because T3 is itself a harness, there is a third path: a **native T3 adapter** against its own lifecycle/events, if those are exposed. That is the deepest integration and should be preferred for T3's own agent loop. The three paths are:
+
+1. **T3-native lifecycle** — prompt/tool/turn events from T3's own harness; deepest.
+2. **T3 MCP control plane** — launch/send/read/wait/interrupt; public and provider-agnostic.
+3. **ACP proxy** — wrap T3 threads that run ACP agents; broad and protocol-level.
 
 T3 also gives Ratchet a **cross-provider delegation** surface: a Ratchet controller can run a child on a different provider or model via `delegate_task`. That is optional; the core `delegate` concept should not depend on T3.
 

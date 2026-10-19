@@ -21,7 +21,7 @@ The split is:
 
 | Owner | Owns |
 |---|---|
-| Harness (pi, Claude Code, OpenCode/T3) | Prompt assembly, model choice, inference, tool dispatch |
+| Harness (pi, Claude Code, OpenCode, T3 Code) | Prompt assembly, model choice, inference, tool dispatch |
 | Model | Reasoning and the response text |
 | Ratchet | Contract state, allow/deny on tool calls, check evidence |
 | Repo + CI | The commands that decide whether the change is good |
@@ -70,7 +70,7 @@ ratchet status
 | pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `tool_call` hook |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
 | OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
-| T3 Code | the same OpenCode plugin and skill | partial: same gap as OpenCode |
+| T3 Code | T3 harness lifecycle; ACP proxy; OpenCode plugin where applicable | partial: native T3 adapter still to build |
 | Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 

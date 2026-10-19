@@ -251,18 +251,19 @@ There is no single lifecycle-hook contract implemented identically across IDEs. 
 | Claude Code | `UserPromptSubmit` | `PreToolUse` | `Stop` | Tool guard installed; prompt + stop next |
 | pi | `before_agent_start` (prompt + system prompt) | `tool_call` | `agent_end` + `sendMessage({ triggerTurn: true })` (soft) | Reference implementation; add the full-contract stop gate |
 | OpenCode 2 | plugin `chat.message` / system transform (verify v2) | `tool.execute.before` | session idle + client prompt (soft) | Tool guard exists; prompt/stop partial |
-| T3 Code | inherits the OpenCode harness | inherits OpenCode | inherits OpenCode; T3-owned tools may bypass | Partial; verify |
+| T3 Code | T3 native thread/prompt lifecycle; ACP `session/prompt` | T3 permission modes; ACP `request_permission`; provider hooks | T3 run completion + `ratchet check`; ACP follow-up | Harness + control plane; native adapter if exposed; MCP/ACP fallbacks |
 | Cursor | `beforeSubmitPrompt` | `preToolUse` | `stop` + `followup_message` | Hooks available; Claude-compatible; adapter to build |
-| T3 Code | `t3_thread_send` / message preamble | underlying provider hooks; no T3 pre-tool veto | `t3_thread_wait` + `t3_thread_send` + checks | Control-plane adapter; provider hooks for pre-tool |
 | ACP agents | `session/prompt` (proxy prepends) | `session/request_permission`; fs/terminal (capability-gated) | prompt response + follow-up `session/prompt` | ACP v1 stable; proxy RFD draft |
 | Generic CLI | `ratchet run` wrapper | `ratchet guard` via wrapper | `ratchet check` after the run | Works anywhere; less seamless |
 
 The fallback ladder:
 
 1. **Native hooks** — the full loop, best UX.
-2. **Wrapper** — `ratchet run <harness> "prompt"` creates the contract, launches the harness, and runs checks at the end. Works for harnesses without hooks.
-3. **Repository gate** — git pre-commit and required CI. Always present; the authority of last resort.
-4. **Gateway** — an OpenAI/Anthropic-compatible proxy for hookless IDEs. It can inject skills and inspect requests at the HTTP boundary, but it is a large, security-sensitive build. Phase 3, not Phase 1.
+2. **ACP proxy** — one protocol-level wrapper for any ACP agent; broad, but the proxy RFD is draft.
+3. **Control-plane supervisor** — T3 MCP or another control API; launch, wait, check, send failures.
+4. **Wrapper** — `ratchet run <harness> "prompt"` creates the contract, launches the harness, and runs checks at the end. Works for harnesses without hooks.
+5. **Repository gate** — git pre-commit and required CI. Always present; the authority of last resort.
+6. **Gateway** — an OpenAI/Anthropic-compatible proxy for hookless IDEs. It can inject skills and inspect requests at the HTTP boundary, but it is a large, security-sensitive build. Phase 3, not Phase 1.
 
 The user experience is the target across the matrix: type the prompt, get a contract, get blocked when out of bounds, get stopped when checks fail. The integration underneath is per-harness, and the docs should say so.
 
@@ -371,7 +372,7 @@ The important metric is not "how often did the model follow the skill?" It is "h
 4. **Stop-loop policy.** Three continuations, then uncertified? Or block until a human? The cap prevents loops; the failure must remain visible.
 5. **Profile confidence.** What threshold justifies a specialized profile? A wrong `proof` or `migration` profile is worse than `general`.
 6. **Check bootstrapping.** What does `ratchet init` do in a repo with no tests, no lint, and no build? A generated smoke test is better than nothing; a waiver must be explicit.
-7. **T3 and Cursor hooks.** T3 inherits OpenCode but may not expose a blocking stop. Cursor's current hook surface needs verification.
+7. **T3 and Cursor hooks.** T3 is its own harness; which lifecycle hooks does it expose, and does it have a blocking stop? Cursor's current hook surface needs verification.
 8. **Cloud and remote agents.** Hooks that run on the developer's machine do not cover cloud sessions. The gateway or a server-side check is the only answer there.
 9. **Evaluation data.** The first route set will be small and biased toward this user's prompts. It needs to grow across repos and languages.
 10. **Skill quality.** A bad description makes a good router look bad. Who owns skill descriptions and routing metadata?

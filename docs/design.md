@@ -155,7 +155,7 @@ Enforced by: branch protection, review requirements, and the decision to automat
 | Claude Code | `~/.claude/skills`, `.claude/skills` | `PreToolUse` | hooks cover subagents in current versions; verify | git + CI |
 | Cursor | `.cursor/skills`, Agent Plugins | Hooks | verify subagent coverage | git + CI |
 | OpenCode | `.opencode/skills`, `.agents/skills` | `tool.execute.before` | known gaps: subagent calls and MCP tools may not fire the hook | git + CI |
-| T3 Code | inherits the OpenCode harness | inherits OpenCode | T3 MCP tools may bypass | git + CI |
+| T3 Code | T3-native (pending) | T3 lifecycle (pending adapter); ACP proxy | T3-owned tools may bypass | git + CI |
 | Codex | `.agents/skills`, `AGENTS.md` | `PreToolUse` (0.163+): Bash, apply_patch, MCP | Hosted tools do not use the local hook path; hooks need trust review | Sandbox + CI |
 
 The OpenCode gap is not a bug in Ratchet. It is the reason the out-of-loop gate is mandatory. A security control that only covers the main agent's built-in tools is a speed bump.

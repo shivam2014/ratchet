@@ -20,7 +20,7 @@ node bin/ratchet.mjs install --user --harness pi,claude,opencode,t3,codex --yes
 | pi | `~/.pi/agent/extensions/ratchet.ts`, `~/.pi/agent/skills/ratchet-mode` |
 | Claude Code | `~/.claude/settings.json` hook, `~/.claude/skills/ratchet-mode` |
 | OpenCode | `~/.config/opencode/plugins/ratchet.js`, `~/.agents/skills/ratchet-mode` |
-| T3 Code | the same OpenCode plugin and skill |
+| T3 Code | T3 harness; ACP proxy and native adapter planned; OpenCode plugin only where applicable |
 | Codex | `~/.agents/skills/ratchet-mode` |
 
 `ratchet status` lists what is installed. `ratchet uninstall --harness ...` removes only those paths.
