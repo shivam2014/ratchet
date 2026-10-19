@@ -13,7 +13,9 @@ ratchet done      # refuses without passing evidence
 
 ## No model backend
 
-Ratchet is a Node CLI with no model, no API key, and no network call. It does not generate replies and it does not see the full prompt or the model's prose.
+Ratchet is a Node CLI with no model, no API key, and no network call. It does not generate replies and it does not treat the model's prose as evidence.
+
+The v0 CLI is prompt-blind. The planned `ratchet route` hook reads the prompt locally to choose a contract profile and a skill shortlist; it still has no model, makes no network call, and stores a hash rather than the raw prompt by default. See [docs/vision.md](docs/vision.md).
 
 The split is:
 
@@ -29,6 +31,8 @@ Ratchet participates at three points only:
 1. **Before the loop**: `ratchet prompt` renders a deterministic Markdown brief from `contract.json`. It is string formatting, not generation.
 2. **During the loop**: the adapter sends one tool call as JSON to `ratchet guard`. The guard returns allow or deny from path, scope, and budget rules.
 3. **After the loop**: `ratchet check` runs the repo's own commands and records exit codes; `ratchet done` reads that evidence.
+
+Planned for the automatic flow: a `UserPromptSubmit` hook calls `ratchet route` to create the contract and inject the brief, and a `Stop` hook calls `ratchet stop` to run the checks before the model can finish. Then the user does not run `ratchet task start` for the normal case. The rest of this README describes v0, where the contract is created explicitly.
 
 If you later want model-assisted judgment, it belongs in an optional `ratchet judge` command whose output is an advisory artifact, not the authority. The deterministic checks stay the gate.
 
@@ -171,4 +175,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/test-matrix.md](docs/test-matrix.md) for the feature-to-test map. Per-harness records: [Codex](docs/codex-test.md), [Claude](docs/claude-test.md), [pi](docs/pi-test.md), [OpenCode](docs/opencode-test.md). See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.
+See [docs/vision.md](docs/vision.md) for the product vision: prompt → route → contract → guard → stop gate → CI. See [docs/routing.md](docs/routing.md) for the routing research, the cascade design, and the evaluation plan. See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/test-matrix.md](docs/test-matrix.md) for the feature-to-test map. Per-harness records: [Codex](docs/codex-test.md), [Claude](docs/claude-test.md), [pi](docs/pi-test.md), [OpenCode](docs/opencode-test.md). See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.
