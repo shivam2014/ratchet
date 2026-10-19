@@ -21,6 +21,8 @@ native response (additionalContext, block, follow-up, exit code)
 
 The pi extension is one adapter. Its policy moves into the core; its `before_agent_start`, `tool_call`, `tool_result`, and `agent_end` handlers become one implementation of the protocol. The core never imports pi.
 
+The broadest implementation of that protocol is an **ACP proxy**: one wrapper between any ACP editor and any ACP agent. The deepest implementation is **native hooks**: Codex, Claude, Cursor, pi. Use ACP for breadth and native hooks for depth.
+
 A model can be an **outer supervisor** for harnesses with no lifecycle API: it launches the harness, watches the workspace, runs Ratchet checks, and sends failures back. That is a valid fallback. It is not the trust boundary, because the checks are still deterministic and outside the model.
 
 ## What pi actually depends on
@@ -82,12 +84,82 @@ Not every harness needs the same depth. Use the strongest available tier, and al
 | Tier | What it gives | Harnesses | Limits |
 |---|---|---|---|
 | **1. Native lifecycle hooks** | Guidance + pre-tool guard + post-tool feedback + stop gate + evidence | Codex, Claude Code, Cursor, pi, OpenCode (partial) | Per-harness adapter; hook trust differs; MCP/subagent coverage varies |
-| **2. Control-plane supervisor** | Create a thread, inject the brief, wait for completion, run checks, send failures back | T3 MCP; any harness with a control API | No pre-tool veto unless the underlying provider has hooks; post-hoc interrupt only |
-| **3. Wrapper** | Launch the harness, prepend the brief, run checks at the end | Any CLI harness | No in-loop guard or stop gate; the user can interrupt |
-| **4. Gateway / proxy** | Inject system context, see requests/responses, run checks between turns | Any harness with a custom base URL | Must speak provider APIs, streaming, tools, images; holds credentials; complex |
-| **5. Model-driven tools** | The model calls `ratchet.*` MCP tools | Any MCP-capable harness | The model can skip them; advisory only, never the gate |
+| **2. ACP proxy** | One protocol-level wrapper: prompt injection, permission/fs/terminal gates, tool-call events, turn-end checks, follow-up prompts | Any ACP agent; Claude, Codex, Cursor, OpenCode, pi via ACP adapters | Proxy RFD is draft; permission/tool reporting is optional; not a sandbox |
+| **3. Control-plane supervisor** | Create a thread, inject the brief, wait for completion, run checks, send failures back | T3 MCP; any harness with a control API | No pre-tool veto unless the underlying provider has hooks; post-hoc interrupt only |
+| **4. Wrapper** | Launch the harness, prepend the brief, run checks at the end | Any CLI harness | No in-loop guard or stop gate; the user can interrupt |
+| **5. Gateway / proxy** | Inject system context, see requests/responses, run checks between turns | Any harness with a custom base URL | Must speak provider APIs, streaming, tools, images; holds credentials; complex |
+| **6. Model-driven tools** | The model calls `ratchet.*` MCP tools | Any MCP-capable harness | The model can skip them; advisory only, never the gate |
 
-The order is deliberate. Tiers 1 and 2 give deterministic enforcement without a model in the loop. Tier 5 is the weakest and should never be the only mechanism.
+The order is deliberate. Tiers 1–3 give deterministic enforcement without a model in the loop. Tier 6 is the weakest and should never be the only mechanism.
+
+## ACP: the universal extension mechanism (draft)
+
+Strictly, there is **no finalized universal hook standard**. Agent Plugins 1.0.0 makes skills and MCP portable, but explicitly leaves hooks to client extension namespaces. Cursor loading Claude Code hooks is a two-harness compatibility bridge, not a standard.
+
+There is, however, a draft universal **extension** mechanism that is explicitly designed to subsume hooks:
+
+> “Enable a universal agent extension mechanism via ACP proxies, components that sit between a client and an agent. Proxies can intercept and transform messages… they serve as a universal extension mechanism that can subsume AGENTS.md, hooks, MCP servers, etc.”
+>
+> — ACP RFD, *Agent Extensions via ACP Proxies* (Draft)
+
+### What ACP is
+
+The **Agent Client Protocol** standardizes communication between editors/IDEs and coding agents. It is JSON-RPC over stdio/HTTP/WebSocket, and it is already broad:
+
+- **Agents**: Claude (via Zed's SDK adapter), Codex CLI (via ACP's adapter), Cursor, OpenCode, pi (via `pi-acp`), Gemini CLI, GitHub Copilot, Goose, Cline, and many more.
+- **Clients**: Zed, Neovim, VS Code, JetBrains, Emacs, T3 Code (ACP providers), and a long list of desktop/web clients.
+
+ACP v1 is stable. ACP v2 is in preview/draft; T3 negotiates both. The **proxy chain** RFD is draft, with a canonical Rust conductor (`sacp-conductor`).
+
+### How a Ratchet ACP proxy would work
+
+```text
+Editor / IDE
+    │  ACP
+    ▼
+Ratchet ACP proxy
+    │  ACP
+    ▼
+Real agent (Claude, Codex, Cursor, OpenCode, pi, …)
+```
+
+The editor points its agent command at `ratchet acp -- <real-agent-command>`. Ratchet speaks ACP on both sides. It can:
+
+| ACP surface | Ratchet use | Guarantee |
+|---|---|---|
+| `session/prompt` | Prepend the contract brief and skill shortlist | Proxy controls the prompt; strong |
+| `session/request_permission` | Allow/deny a tool call against contract scope | Agent **MAY** ask; not guaranteed |
+| `fs/write_text_file` | Enforce writable paths | Only if the agent uses client filesystem capabilities |
+| `terminal/create` | Enforce command/deny policy | Only if the agent uses client terminal capabilities |
+| `session/update` `tool_call` / `plan` | Record activity, detect out-of-scope writes, update the feed | Agent **SHOULD** report; not guaranteed |
+| Prompt response / turn end | Run the full check suite; send a follow-up prompt with failures | v1 prompt response; v2 `state_update`; proxy controls the boundary |
+| `session/cancel` | Interrupt on a violation | Proxy can send |
+
+This is the closest thing to “build Ratchet once, connect to many harnesses.” One proxy can wrap any ACP agent; the agent-specific differences stay inside the ACP adapter.
+
+### What ACP cannot guarantee
+
+- **Permission requests are optional.** ACP says the agent **MAY** request permission before executing a tool. If it does not, the proxy may only see the tool call after the fact.
+- **Tool-call reporting is optional.** The agent **SHOULD** report `tool_call` updates, not MUST. The proxy’s activity feed is only as complete as the agent’s reporting.
+- **Filesystem/terminal gating is capability-based.** If the agent executes its own terminal or writes files directly, the client methods are bypassed.
+- **System prompt injection is still an unstable RFD.** ACP currently has no stable system-level instruction field; Ratchet prepends context to `session/prompt`. The *Client-Provided System Prompt* RFD is implemented behind an unstable feature and would make this system-level.
+- **The proxy chain RFD is draft.** Editors do not yet universally expose “install a proxy”; the simple wrapper (`ratchet acp -- <agent>`) works today for any ACP client that lets you set the agent command.
+- **ACP is a trusted-editor model, not a sandbox.** The agent still runs tools; the proxy is a control point, not physical isolation.
+
+So ACP is the best **single universal adapter**, but it is not a replacement for native hooks when you need guaranteed pre-tool blocking. The right architecture is ACP for breadth, native hooks for depth, and CI for authority.
+
+### Universal candidates compared
+
+| Candidate | Coverage | Status | Enforcement strength |
+|---|---|---|---|
+| **ACP proxy** | Claude, Codex, Cursor, OpenCode, pi via ACP adapters; many editors | ACP v1 stable; proxy RFD **draft** | Prompt injection, permission/fs/terminal gates, turn-end checks; pre-tool is not guaranteed |
+| **Claude Code hooks** | Claude Code + Cursor (Cursor loads Claude hooks) | Stable | Strong pre-tool/stop; only two harnesses |
+| **Agent Plugins 1.0.0** | Skills + MCP across clients | Stable | Hooks are client-specific namespaces; no portable hook semantics |
+| **MCP** | Tools/resources across clients | Stable | Tool calls only; no prompt/turn lifecycle; model-invoked |
+| **Native adapters** | Each harness separately | Varies | Strongest per harness; most implementation work |
+
+This is the honest ranking. ACP is the broadest single bet, but it is a draft proxy RFD on top of a stable protocol. Native hooks are the deepest but narrowest. The core should support both.
+
 
 ## Does a model need to drive Ratchet?
 
@@ -176,6 +248,8 @@ What this does not give you is a pre-tool veto. T3's MCP surface can read activi
 
 A native T3 provider adapter could expose pre-tool events, but that is a T3 change, not a Ratchet change. The MCP controller is the public, portable integration.
 
+T3 also supports **ACP providers**, including local ACP commands. That gives a second, simpler integration: register `ratchet acp -- <agent>` as a Local ACP command in T3, and the ACP proxy wraps that agent with the contract. Use ACP where the provider is ACP; use the MCP controller where T3 is running a native provider (Codex, Claude, Cursor, OpenCode).
+
 T3 also gives Ratchet a **cross-provider delegation** surface: a Ratchet controller can run a child on a different provider or model via `delegate_task`. That is optional; the core `delegate` concept should not depend on T3.
 
 ## What is actually portable
@@ -187,15 +261,16 @@ T3 also gives Ratchet a **cross-provider delegation** surface: a Ratchet control
 | Role definitions | Mostly | Concepts portable; native subagent/tool mapping differs |
 | Plan schema / event schema | Yes | Data model; renderers are separate |
 | Activity feed | Renderer | Same events, different UI |
+| ACP proxy | Adapter | Protocol-level wrapper; broad but draft |
 | Hooks | No | Agent Plugins 1.0.0 leaves hooks to client namespaces; each harness has its own API |
 | Tool execution | No | Owned by the harness |
 | Model call | No | Owned by the harness/provider |
 
-The Agent Plugins 1.0.0 spec is explicit: client-specific behavior, including `com.example.client/hooks/`, is a **client extension namespace** with no portable discovery, validation, or loading semantics. There is no standard hook spec to wait for. The adapter matrix is the architecture, not a temporary workaround.
+The Agent Plugins 1.0.0 spec is explicit: client-specific behavior, including `com.example.client/hooks/`, is a **client extension namespace** with no portable discovery, validation, or loading semantics. There is no standardized hook spec. ACP proxy chains are the closest universal extension mechanism, but the RFD is draft; direct harnesses still need native adapters.
 
 ## What remains hard
 
-- **Hookless IDEs**: tier 3/4 or a model supervisor; never as strong as native hooks.
+- **Hookless IDEs**: ACP if available; otherwise tier 4/5 or a model supervisor. Never as strong as native hooks.
 - **MCP and subagent calls**: some harnesses bypass the main tool hook; CI and server-side gates are the backstop.
 - **Cloud agents**: Cursor runs repository hooks in cloud agents; Codex/Claude cloud support must be verified per product.
 - **OpenCode v2**: the plugin API is still moving; tool gating is proven, prompt/system injection needs verification against the running version.
@@ -210,6 +285,10 @@ Fetched 2026-10-20. The web search backend returned no results, so these were re
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks): `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`; exit 2 blocks/continues; stdout becomes context on prompt events.
 - [Cursor hooks](https://cursor.com/docs/agent/hooks): `beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `afterFileEdit`, `stop` with `followup_message` and `loop_limit`; `failClosed`; cloud agents run repository hooks; Cursor can load hooks from third-party tools like Claude Code.
 - [Agent Plugins 1.0.0](https://agent-plugins.org/specification): skills and MCP are portable; hooks live under client extension namespaces and have no portable semantics.
+- [Agent Client Protocol](https://agentclientprotocol.com/): stable editor–agent protocol; agents/clients list.
+- [ACP proxies RFD](https://agentclientprotocol.com/rfds/proxy-chains): draft universal extension mechanism; explicitly proposed to subsume hooks and `AGENTS.md`.
+- [ACP tool calls](https://agentclientprotocol.com/protocol/tool-calls), [filesystem](https://agentclientprotocol.com/protocol/file-system), [terminals](https://agentclientprotocol.com/protocol/terminals): permission/fs/terminal surfaces a proxy can gate.
+- [ACP client-provided system prompt RFD](https://agentclientprotocol.com/rfds/client-system-prompt): system-level instruction injection, currently unstable.
 - [T3 orchestration MCP](https://github.com/pingdotgg/t3code/blob/main/docs/orchestration-v2/orchestrator-mcp-server.md): thread launch/send/read/wait/interrupt and cross-provider `delegate_task`.
 - [T3 provider constraints](https://github.com/pingdotgg/t3code/blob/main/docs/internals/providers.md): provider behavior belongs behind an adapter; orchestration works with normalized commands/events.
 - [OpenCode plugins](https://opencode.ai/docs/plugins/): plugin hooks, `tool.execute.before/after`, compaction hooks; v2 API is typed and still moving.
@@ -217,8 +296,9 @@ Fetched 2026-10-20. The web search backend returned no results, so these were re
 ## Decision
 
 - Ratchet's portable core is a **CLI + normalized event protocol**, not a pi extension.
-- Each harness gets a thin adapter; the pi extension becomes the reference adapter.
-- Tier 1 native hooks first: Codex, Claude, Cursor, pi; OpenCode where the v2 API permits.
-- Tier 2 control-plane supervisor for T3; use provider hooks for pre-tool enforcement.
-- Tier 3 wrapper and tier 4 gateway for the rest; tier 5 model tools are advisory only.
+- Build the **ACP proxy** as the broadest universal adapter: `ratchet acp -- <agent>`. Spike it with one agent (Claude or Codex via ACP) before generalizing.
+- Keep **native hooks** for direct harnesses where depth matters: Codex, Claude, Cursor, pi; OpenCode where the v2 API permits.
+- Use the **T3 control-plane supervisor** for T3 native providers; ACP covers T3's ACP agents.
+- Tier 4 wrapper and tier 5 gateway for the rest; tier 6 model tools are advisory only.
 - No model in the pass/fail path. A model may drive the outer supervisor, never the certification.
+- CI remains the authority in every tier.

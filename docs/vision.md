@@ -254,6 +254,7 @@ There is no single lifecycle-hook contract implemented identically across IDEs. 
 | T3 Code | inherits the OpenCode harness | inherits OpenCode | inherits OpenCode; T3-owned tools may bypass | Partial; verify |
 | Cursor | `beforeSubmitPrompt` | `preToolUse` | `stop` + `followup_message` | Hooks available; Claude-compatible; adapter to build |
 | T3 Code | `t3_thread_send` / message preamble | underlying provider hooks; no T3 pre-tool veto | `t3_thread_wait` + `t3_thread_send` + checks | Control-plane adapter; provider hooks for pre-tool |
+| ACP agents | `session/prompt` (proxy prepends) | `session/request_permission`; fs/terminal (capability-gated) | prompt response + follow-up `session/prompt` | ACP v1 stable; proxy RFD draft |
 | Generic CLI | `ratchet run` wrapper | `ratchet guard` via wrapper | `ratchet check` after the run | Works anywhere; less seamless |
 
 The fallback ladder:
@@ -265,7 +266,7 @@ The fallback ladder:
 
 The user experience is the target across the matrix: type the prompt, get a contract, get blocked when out of bounds, get stopped when checks fail. The integration underneath is per-harness, and the docs should say so.
 
-There is no portable hook standard to wait for. Agent Plugins 1.0.0 makes skills and MCP portable, but explicitly leaves hooks to client extension namespaces. The adapter matrix is the architecture. The normalized event protocol and the full integration ladder are in [universal-integration.md](universal-integration.md).
+There is no finalized portable hook standard. Agent Plugins 1.0.0 leaves hooks to client extension namespaces. The closest universal extension mechanism is **ACP proxy chains**: ACP is a stable editor–agent protocol, and its draft proxy RFD is explicitly designed to subsume hooks and `AGENTS.md`. The practical shape is `ratchet acp -- <agent>`: one proxy between the editor and any ACP agent, with prompt injection, permission/fs/terminal gates, tool-call events, and turn-end checks. Build ACP for breadth, native hooks for depth, and the T3 MCP controller for T3's native providers. The normalized event protocol and the full ladder are in [universal-integration.md](universal-integration.md).
 
 ### Who drives what
 
@@ -332,6 +333,7 @@ A profile can extend another (`feature` extends `general`), so the common checks
 ### Phase 2: the rest of the matrix
 
 - pi parity: the reference adapter uses the same CLI; add parity tests for route, guard, and stop; keep the existing activity feed as a renderer.
+- ACP proxy: `ratchet acp -- <agent>` with prompt injection, permission/fs/terminal gates, tool-call events, and turn-end checks; spike with Claude or Codex via ACP.
 - OpenCode 2: prompt injection and stop semantics; tool gating is proven; document the soft-stop limit.
 - T3 control-plane adapter: `t3_thread_launch` / `t3_thread_send` / `t3_thread_read` / `t3_thread_wait` around `ratchet check`; use provider hooks for pre-tool enforcement.
 - Cursor: build on its Claude-compatible hooks (`beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `stop`); verify cloud and local behavior.
@@ -373,6 +375,7 @@ The important metric is not "how often did the model follow the skill?" It is "h
 8. **Cloud and remote agents.** Hooks that run on the developer's machine do not cover cloud sessions. The gateway or a server-side check is the only answer there.
 9. **Evaluation data.** The first route set will be small and biased toward this user's prompts. It needs to grow across repos and languages.
 10. **Skill quality.** A bad description makes a good router look bad. Who owns skill descriptions and routing metadata?
+11. **ACP adoption.** Which target editors can point the agent command at a proxy today, and when will proxy installation be first-class? The proxy RFD is draft; the wrapper works now.
 
 ## Decision log
 
@@ -385,3 +388,4 @@ The important metric is not "how often did the model follow the skill?" It is "h
 | 2026-10-20 | Hooks first, gateway later | Prove the loop on harnesses with lifecycle hooks before taking on proxy complexity |
 | 2026-10-20 | No regex-only routing; cascade with abstention and evaluation | Natural language has an open-ended long tail; see [routing.md](routing.md) |
 | 2026-10-20 | Check surface is hashed and canaried | A model that can weaken the check can defeat the gate |
+| 2026-10-20 | ACP proxy is the broadest universal adapter; native hooks for depth | No finalized hook standard; ACP's draft proxy RFD explicitly aims to subsume hooks |
