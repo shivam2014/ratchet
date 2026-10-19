@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>How Ratchet actually runs</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121933;
+    --ink: #e8edf7;
+    --muted: #98a4bd;
+    --blue: #2f6fed;
+    --purple: #8b5cf6;
+    --green: #22a06b;
+    --gold: #d9a441;
+    --line: #2a3554;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px;
+  }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 18px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #0a0f1f; padding: 1px 5px; border-radius: 4px; }
+  .note { color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .never { color: #ff9b9b; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .p-blue { background: #17356b; color: #a9c6ff; }
+  .p-purple { background: #2d2350; color: #cdb9ff; }
+  .p-green { background: #103a2a; color: #9be3c0; }
+  .p-gold { background: #3d2f12; color: #f0cf8a; }
+</style>
+</head>
+<body>
+  <h1>How Ratchet actually runs</h1>
+  <p class="sub">Ratchet is a referee. It never reads the prompt, plans the task, or writes code. It gates tool calls and runs checks.</p>
+
+  <svg viewBox="0 0 1460 1080" width="100%" role="img" aria-label="Ratchet flow diagram">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8fa0c4"/>
+      </marker>
+      <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff8f8f"/>
+      </marker>
+    </defs>
+
+    <!-- lane headers -->
+    <text x="30" y="34" fill="#a9c6ff" font-size="16" font-weight="700" font-family="ui-sans-serif, system-ui">HARNESS + MODEL</text>
+    <text x="545" y="34" fill="#cdb9ff" font-size="16" font-weight="700" font-family="ui-sans-serif, system-ui">RATCHET CLI</text>
+    <text x="1045" y="34" fill="#9be3c0" font-size="16" font-weight="700" font-family="ui-sans-serif, system-ui">REPO + CI</text>
+
+    <!-- left lane -->
+    <g font-family="ui-sans-serif, system-ui" font-size="15">
+      <rect x="30" y="60" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="86" fill="#e8edf7">1. You type: “build Flappy”</text>
+      <text x="48" y="107" fill="#a9c6ff" font-size="13">The prompt goes to the harness. Ratchet never sees it.</text>
+
+      <rect x="30" y="150" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="176" fill="#e8edf7">2. Harness sends the prompt to the model</text>
+      <text x="48" y="197" fill="#a9c6ff" font-size="13">The model decides what to build and which tool to call.</text>
+
+      <rect x="30" y="240" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="266" fill="#e8edf7">3. Model requests a tool call</text>
+      <text x="48" y="287" fill="#a9c6ff" font-size="13">write / edit / bash / apply_patch</text>
+
+      <rect x="30" y="430" width="430" height="76" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="456" fill="#e8edf7">7. Tool runs or is blocked</text>
+      <text x="48" y="477" fill="#a9c6ff" font-size="13">The model sees the result, including a denial reason,</text>
+      <text x="48" y="495" fill="#a9c6ff" font-size="13">then decides the next action.</text>
+
+      <rect x="30" y="640" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="666" fill="#e8edf7">9. Agent runs <tspan font-family="ui-monospace, Menlo" font-size="14">ratchet check</tspan></text>
+      <text x="48" y="687" fill="#a9c6ff" font-size="13">Or the user / CI runs it. This is the post layer.</text>
+
+      <rect x="30" y="830" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
+      <text x="48" y="856" fill="#e8edf7">12. Agent runs <tspan font-family="ui-monospace, Menlo" font-size="14">ratchet done</tspan></text>
+      <text x="48" y="877" fill="#a9c6ff" font-size="13">Refused unless the last check run passed.</text>
+    </g>
+
+    <!-- middle lane -->
+    <g font-family="ui-sans-serif, system-ui" font-size="15">
+      <rect x="530" y="240" width="430" height="62" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="548" y="266" fill="#e8edf7">4. PreToolUse hook → adapter</text>
+      <text x="548" y="287" fill="#cdb9ff" font-size="13">Normalises the tool call to one JSON event.</text>
+
+      <rect x="530" y="330" width="430" height="62" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="548" y="356" fill="#e8edf7">5. ratchet guard</text>
+      <text x="548" y="377" fill="#cdb9ff" font-size="13">Reads .ratchet/current → the contract.</text>
+
+      <rect x="530" y="420" width="430" height="86" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="548" y="446" fill="#e8edf7">6. Decide against the contract</text>
+      <text x="548" y="467" fill="#cdb9ff" font-size="13">scope · deny list · gates · file/write budgets</text>
+      <text x="548" y="486" fill="#cdb9ff" font-size="13">Append every decision to events.jsonl</text>
+
+      <rect x="990" y="420" width="440" height="86" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="1008" y="446" fill="#e8edf7">8. allow / deny + reason</text>
+      <text x="1008" y="467" fill="#cdb9ff" font-size="13">Adapter returns the harness's block primitive.</text>
+      <text x="1008" y="486" fill="#cdb9ff" font-size="13">Ratchet does not decide what to do next.</text>
+
+      <rect x="530" y="640" width="430" height="62" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="548" y="666" fill="#e8edf7">10. ratchet check runs the verify commands</text>
+      <text x="548" y="687" fill="#cdb9ff" font-size="13">One process per check. Exit codes are the truth.</text>
+
+      <rect x="530" y="740" width="430" height="62" rx="10" fill="#3d2f12" stroke="#d9a441"/>
+      <text x="548" y="766" fill="#f0cf8a">11. Evidence: checks.json + events + result.json</text>
+      <text x="548" y="787" fill="#f0cf8a" font-size="13">Command, exit code, duration, output tail, timestamps.</text>
+
+      <rect x="530" y="830" width="430" height="62" rx="10" fill="#2d2350" stroke="#8b5cf6"/>
+      <text x="548" y="856" fill="#e8edf7">ratchet done</text>
+      <text x="548" y="877" fill="#cdb9ff" font-size="13">Pass → result.json. Fail → refuse, no override.</text>
+    </g>
+
+    <!-- right lane -->
+    <g font-family="ui-sans-serif, system-ui" font-size="15">
+      <rect x="1000" y="640" width="430" height="176" rx="10" fill="#103a2a" stroke="#22a06b"/>
+      <text x="1018" y="666" fill="#e8edf7">Checks the repo already owns</text>
+      <text x="1018" y="690" fill="#9be3c0" font-size="13">lint · tests · architecture · tamper</text>
+      <text x="1018" y="712" fill="#9be3c0" font-size="13">Bend: <tspan font-family="ui-monospace, Menlo" font-size="12">bend PROOF.bend --check-only</tspan></text>
+      <text x="1018" y="734" fill="#9be3c0" font-size="13">fmt · typecheck · build · custom scripts</text>
+      <text x="1018" y="762" fill="#7fcfae" font-size="12">Bend is one check. It is not Ratchet's language.</text>
+      <text x="1018" y="782" fill="#7fcfae" font-size="12">It only verifies Bend code. A JS game gets lint/tests.</text>
+      <text x="1018" y="802" fill="#7fcfae" font-size="12">The command is a string in the contract.</text>
+
+      <rect x="1000" y="850" width="430" height="76" rx="10" fill="#103a2a" stroke="#22a06b"/>
+      <text x="1018" y="876" fill="#e8edf7">13. CI re-runs the same checks</text>
+      <text x="1018" y="897" fill="#9be3c0" font-size="13">Required check + branch protection. This is the</text>
+      <text x="1018" y="915" fill="#9be3c0" font-size="13">authority the model cannot edit or bypass.</text>
+    </g>
+
+    <!-- arrows -->
+    <g stroke="#8fa0c4" stroke-width="2" fill="none" marker-end="url(#arrow)">
+      <path d="M 245 122 L 245 150"/>
+      <path d="M 245 212 L 245 240"/>
+      <path d="M 460 271 L 530 271"/>
+      <path d="M 745 302 L 745 330"/>
+      <path d="M 745 392 L 745 420"/>
+      <path d="M 960 460 L 990 460"/>
+      <path d="M 1210 506 L 1210 520 L 245 520 L 245 506"/>
+      <path d="M 245 430 L 245 302"/>
+      <path d="M 245 506 L 245 640"/>
+      <path d="M 460 671 L 530 671"/>
+      <path d="M 745 702 L 745 740"/>
+      <path d="M 745 802 L 745 830"/>
+      <path d="M 960 861 L 1000 861"/>
+      <path d="M 530 861 L 490 861 L 490 520 L 460 520" stroke-dasharray="5 5"/>
+    </g>
+
+    <!-- loop label -->
+    <text x="300" y="318" fill="#8fa0c4" font-size="12" font-family="ui-sans-serif, system-ui">repeat until the agent stops</text>
+    <text x="1002" y="540" fill="#8fa0c4" font-size="12" font-family="ui-sans-serif, system-ui">the model sees this and adapts</text>
+    <text x="500" y="745" fill="#ff8f8f" font-size="12" font-family="ui-sans-serif, system-ui">refused → fix and loop</text>
+
+    <!-- what ratchet never does -->
+    <rect x="30" y="960" width="1400" height="92" rx="12" fill="#1a1020" stroke="#5a2a3a"/>
+    <text x="50" y="990" fill="#ff9b9b" font-size="15" font-weight="700" font-family="ui-sans-serif, system-ui">What Ratchet never does</text>
+    <text x="50" y="1016" fill="#e8b4bc" font-size="14" font-family="ui-sans-serif, system-ui">read your prompt · plan the feature · write code · call a model · choose the next step · run the agent</text>
+    <text x="50" y="1038" fill="#b98a95" font-size="13" font-family="ui-sans-serif, system-ui">It is a referee with a contract and a stopwatch. The harness and model do the work.</text>
+  </svg>
+
+  <div class="card">
+    <h2>Flappy, concretely</h2>
+    <table>
+      <tr><th>What happens</th><th>Who does it</th><th>What you can inspect</th></tr>
+      <tr><td>Contract created: scope <code>src/**</code>, checks lint/tests/arch/tamper</td><td>You or the agent, before the run</td><td><code>.ratchet/runs/&lt;id&gt;/contract.json</code></td></tr>
+      <tr><td>Prompt “build Flappy” goes to the model</td><td>Harness → model</td><td>Harness transcript; Ratchet has no copy</td></tr>
+      <tr><td>Model writes <code>src/inside.txt</code></td><td>Model → PreToolUse hook → <code>ratchet guard</code></td><td>Allow in <code>events.jsonl</code></td></tr>
+      <tr><td>Model writes <code>outside.txt</code></td><td>Same path, different decision</td><td>DENY “outside scope”; the model sees it</td></tr>
+      <tr><td>Model runs <code>ratchet check</code></td><td>Ratchet executes lint/tests/arch/tamper</td><td><code>checks.json</code>: command, exit, duration, output tail</td></tr>
+      <tr><td><code>ratchet done</code></td><td>Ratchet reads <code>checks.json</code></td><td><code>result.json</code>; refusal on any failure</td></tr>
+      <tr><td>CI re-runs the checks</td><td>GitHub Actions + branch protection</td><td>The authority that survives a bypassed hook</td></tr>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Where Bend sits</h2>
+      <p class="note">Bend is a <b>language</b> whose compiler can check proofs. In the green box above it is one command: <code>bend PROOF.bend --check-only</code>.</p>
+      <p class="note"><b>Ratchet is not written in Bend</b> and does not require it. <code>--bend</code> is only a preset that adds two things to a normal contract: a gate on <code>LAWS.bend</code> and the Bend command to <code>verify</code>. A TypeScript/JS Flappy repo gets lint, tests, arch, and tamper; Bend would not verify that code.</p>
+      <p class="note">Use Bend for a core you are willing to model in Bend. The law is the human-owned spec; the proof is the agent's obligation; Ratchet runs the checker and records the verdict.</p>
+    </div>
+    <div class="card">
+      <h2>Why flags exist</h2>
+      <p class="note"><code>--pstack</code> and <code>--bend</code> are <b>presets</b>, not the architecture. They write standard contract fields:</p>
+      <p class="note"><code>gates</code> = artifacts that must exist before a pattern is writable.<br/><code>verify</code> = commands that must exit 0 before <code>done</code>.</p>
+      <p class="note">You can skip every flag and put the same two fields in <code>.ratchet/config.json</code>. The flags just save typing and keep the messages consistent. If they feel like feature creep, config-only is the cleaner surface.</p>
+    </div>
+  </div>
+</body>
+</html>
