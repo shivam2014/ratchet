@@ -1,7 +1,7 @@
 # Vision: trust by construction
 
 **Status:** draft, 2026-10-20
-**Companions:** [design.md](design.md) for the enforcement kernel; [routing.md](routing.md) for the routing research and evaluation plan; [pi-gap.md](pi-gap.md) for the pi orchestrator → Ratchet gap analysis.
+**Companions:** [design.md](design.md) for the enforcement kernel; [routing.md](routing.md) for the routing research and evaluation plan; [pi-gap.md](pi-gap.md) for the pi orchestrator → Ratchet gap analysis; [universal-integration.md](universal-integration.md) for the lifecycle protocol and adapter ladder.
 
 ## The sentence
 
@@ -252,7 +252,8 @@ There is no single lifecycle-hook contract implemented identically across IDEs. 
 | pi | `before_agent_start` (prompt + system prompt) | `tool_call` | `agent_end` + `sendMessage({ triggerTurn: true })` (soft) | Reference implementation; add the full-contract stop gate |
 | OpenCode 2 | plugin `chat.message` / system transform (verify v2) | `tool.execute.before` | session idle + client prompt (soft) | Tool guard exists; prompt/stop partial |
 | T3 Code | inherits the OpenCode harness | inherits OpenCode | inherits OpenCode; T3-owned tools may bypass | Partial; verify |
-| Cursor | verify current hooks | verify current hooks | verify current hooks | Not installed; no claim |
+| Cursor | `beforeSubmitPrompt` | `preToolUse` | `stop` + `followup_message` | Hooks available; Claude-compatible; adapter to build |
+| T3 Code | `t3_thread_send` / message preamble | underlying provider hooks; no T3 pre-tool veto | `t3_thread_wait` + `t3_thread_send` + checks | Control-plane adapter; provider hooks for pre-tool |
 | Generic CLI | `ratchet run` wrapper | `ratchet guard` via wrapper | `ratchet check` after the run | Works anywhere; less seamless |
 
 The fallback ladder:
@@ -263,6 +264,21 @@ The fallback ladder:
 4. **Gateway** — an OpenAI/Anthropic-compatible proxy for hookless IDEs. It can inject skills and inspect requests at the HTTP boundary, but it is a large, security-sensitive build. Phase 3, not Phase 1.
 
 The user experience is the target across the matrix: type the prompt, get a contract, get blocked when out of bounds, get stopped when checks fail. The integration underneath is per-harness, and the docs should say so.
+
+There is no portable hook standard to wait for. Agent Plugins 1.0.0 makes skills and MCP portable, but explicitly leaves hooks to client extension namespaces. The adapter matrix is the architecture. The normalized event protocol and the full integration ladder are in [universal-integration.md](universal-integration.md).
+
+### Who drives what
+
+| Actor | Owns |
+|---|---|
+| Model | Reasoning, code, plan, skill choice |
+| Harness | Prompt assembly, model call, tool execution, turn lifecycle |
+| Ratchet | Contract, route, guard, checks, evidence, certification |
+| Adapter | Native event ↔ normalized event |
+| Renderer | Activity feed, plan panel, JSON, GitHub output |
+| CI | The authority the agent cannot talk around |
+
+A model may drive an **outer supervisor** for a harness with no lifecycle API: launch it, watch it, run Ratchet checks, send failures back. The model is the transport there, not the judge. The checks stay deterministic, and the model cannot override a failed check.
 
 ## Profiles, not a rule maze
 
@@ -316,9 +332,10 @@ A profile can extend another (`feature` extends `general`), so the common checks
 ### Phase 2: the rest of the matrix
 
 - pi parity: the reference adapter uses the same CLI; add parity tests for route, guard, and stop; keep the existing activity feed as a renderer.
-- OpenCode/T3 adapter: prompt injection and stop semantics; document the soft-stop limit.
+- OpenCode 2: prompt injection and stop semantics; tool gating is proven; document the soft-stop limit.
+- T3 control-plane adapter: `t3_thread_launch` / `t3_thread_send` / `t3_thread_read` / `t3_thread_wait` around `ratchet check`; use provider hooks for pre-tool enforcement.
+- Cursor: build on its Claude-compatible hooks (`beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `stop`); verify cloud and local behavior.
 - `ratchet run` wrapper for harnesses without hooks.
-- Cursor: verify current hook support; install only if reproducible.
 - Check integrity: hash the check surface; canary checks; tamper refusal.
 
 ### Phase 3: hookless IDEs and organizations
