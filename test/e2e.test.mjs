@@ -289,6 +289,30 @@ test("claude adapter: no-ops outside a contract, denies inside", () => {
   assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /outside scope/);
 });
 
+test("e2e: --bend gates Bend code behind LAWS.bend and adds the proof check", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  const start = ratchet(dir, ["task", "start", "--role", "coder", "--goal", "g", "--scope", "**/*.bend", "--bend"]);
+  assert.equal(start.status, 0, start.stderr);
+  assert.match(start.stdout, /gates:\s+LAWS\.bend/);
+
+  const blocked = ratchet(dir, ["guard"], event("write", { path: "code.bend" }, dir));
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /LAWS\.bend/);
+
+  const laws = ratchet(dir, ["guard"], event("write", { path: "LAWS.bend", content: "law x\n" }, dir));
+  assert.equal(laws.status, 0, laws.stderr);
+  fs.writeFileSync(path.join(dir, "LAWS.bend"), "law x\n");
+
+  const allowed = ratchet(dir, ["guard"], event("write", { path: "code.bend", content: "def x" }, dir));
+  assert.equal(allowed.status, 0, allowed.stderr);
+
+  const id = fs.readFileSync(path.join(dir, ".ratchet/current"), "utf8").trim();
+  const contract = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet/runs", id, "contract.json"), "utf8"));
+  assert.equal(contract.gates[0].artifact, "LAWS.bend");
+  assert.ok(contract.verify.some((v) => /PROOF\.bend --check-only/.test(v.cmd)));
+});
+
 test("install: dry run writes nothing", () => {
   const dir = session();
   ratchet(dir, ["init"]);

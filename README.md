@@ -86,6 +86,8 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 
 Ratchet can enforce the actual pstack skills: install them as Agent Skills, then start a task with `--pstack` to gate source writes behind the `/poteto-mode` plan and the `/architect` sketch. See [docs/pstack.md](docs/pstack.md).
 
+Ratchet can also use [Bend](https://bend-lang.com) as a proof oracle: `--bend` gates `**/*.bend` writes behind `LAWS.bend` and verifies with `bend PROOF.bend --check-only`. See [docs/bend.md](docs/bend.md).
+
 See [docs/test-matrix.md](docs/test-matrix.md) for the full feature-to-test map and the bugs the tests caught.
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
@@ -115,7 +117,7 @@ ratchet status
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts |
+| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend` |
 | `ratchet task status` | Show scope, budgets, and check state |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |

@@ -51,7 +51,7 @@ import { codexHome, findRatchetHook, hookTrustHash, readTrustHash } from "../lib
 
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
-  "user", "project", "yes", "dry-run", "global", "pstack",
+  "user", "project", "yes", "dry-run", "global", "pstack", "bend",
 ]);
 
 
@@ -178,23 +178,36 @@ function commandTask(args) {
     fail('task start needs --scope (for example --scope "src/**" --scope "tests/**"), or pass --read-only.');
   }
   const deny = [...(config.defaults?.deny ?? []), ...args.all("deny")];
-  const gates = args.has("pstack")
-    ? [
-        {
-          artifact: ".ratchet/plan.md",
-          before: ["src/**", "index.html", "styles.css"],
-          message: "pstack /poteto-mode: write the chosen playbook and its steps to .ratchet/plan.md first",
-        },
-        {
-          artifact: ".ratchet/sketch.md",
-          before: ["src/**", "index.html", "styles.css"],
-          message: "pstack /architect: sketch the types, signatures, and module shape in .ratchet/sketch.md first",
-        },
-      ]
-    : config.gates ?? [];
+  const gates = [];
+  if (args.has("pstack")) {
+    gates.push(
+      {
+        artifact: ".ratchet/plan.md",
+        before: ["src/**", "index.html", "styles.css"],
+        message: "pstack /poteto-mode: write the chosen playbook and its steps to .ratchet/plan.md first",
+      },
+      {
+        artifact: ".ratchet/sketch.md",
+        before: ["src/**", "index.html", "styles.css"],
+        message: "pstack /architect: sketch the types, signatures, and module shape in .ratchet/sketch.md first",
+      },
+    );
+  }
+  if (args.has("bend")) {
+    gates.push({
+      artifact: "LAWS.bend",
+      before: ["**/*.bend"],
+      message: "Bend: state the law in LAWS.bend before changing Bend code (the human owns the law; the agent owns the proof)",
+    });
+  }
+  gates.push(...(config.gates ?? []));
   const scoped = gates.length
-    ? [...new Set([...scope, ...gates.map((gate) => gate.artifact)])]
+    ? [...new Set([...scope, ...gates.map((gate) => gate.artifact), ...(args.has("bend") ? ["PROOF.bend"] : [])])]
     : scope;
+  const defaultVerify = [
+    ...(config.checks ?? []).map((c) => c.cmd),
+    ...(args.has("bend") ? [`${process.env.BEND_BIN || "bend"} PROOF.bend --check-only`] : []),
+  ];
   const contract = createContract(root, {
     goal,
     role,
@@ -204,9 +217,7 @@ function commandTask(args) {
     gates,
     maxFiles: Number(args.one("max-files", config.defaults?.maxFiles ?? 12)),
     maxWrites: Number(args.one("max-writes", config.defaults?.maxWrites ?? 60)),
-    verify: args.all("verify").length
-      ? args.all("verify")
-      : (config.checks ?? []).map((c) => c.cmd),
+    verify: args.all("verify").length ? args.all("verify") : defaultVerify,
   });
   saveContract(root, contract);
   out(`run:     ${contract.id}`);
@@ -745,7 +756,7 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack]
+  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack] [--bend]
   ratchet task status
   ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt

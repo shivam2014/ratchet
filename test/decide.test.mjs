@@ -121,6 +121,24 @@ test("decide: skill gate denies source writes until the artifact exists", (t) =>
   assert.equal(allowed.allow, true);
 });
 
+test("decide: the gate artifact is writable before the gate opens", (t) => {
+  const root = emptyRepo(t);
+  const contract = createContract(root, {
+    goal: "bend",
+    role: "coder",
+    scope: ["**/*.bend", "LAWS.bend", "PROOF.bend"],
+    gates: [{ artifact: "LAWS.bend", before: ["**/*.bend"], message: "write the law first" }],
+  });
+  saveContract(root, contract);
+
+  assert.equal(decide(root, event("write", { path: "LAWS.bend" })).allow, true);
+  assert.equal(decide(root, event("write", { path: "PROOF.bend" })).allow, false);
+  assert.equal(decide(root, event("write", { path: "code.bend" })).allow, false);
+
+  fs.writeFileSync(path.join(root, "LAWS.bend"), "law x\n");
+  assert.equal(decide(root, event("write", { path: "code.bend" })).allow, true);
+});
+
 test("decide: file budget blocks a new path", (t) => {
   const { root, contract } = repo(t, { maxFiles: 1 });
   record(root, event("write", { path: "src/a.ts" }), {

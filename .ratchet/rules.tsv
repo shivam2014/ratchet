@@ -11,3 +11,4 @@ opencode-v2-plugin-shape	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.tes
 claude-absolute-hook-command	code	lib/harnesses.mjs + test/e2e.test.mjs	test/e2e.test.mjs claude format
 pstack-skill-gates	code	lib/decide.mjs + test/decide.test.mjs	test/decide.test.mjs skill gate denies until artifact
 codex-trust-hash	code	lib/codex-trust.mjs + test/codex-trust.test.mjs	test/codex-trust.test.mjs known Codex 0.163 hash
+bend-oracle-check	code	lib/decide.mjs + bin/ratchet.mjs + test/e2e.test.mjs	test/e2e.test.mjs --bend gate and proof check

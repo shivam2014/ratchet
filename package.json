@@ -26,7 +26,8 @@
     "docs",
     "README.md",
     "LICENSE",
-    "plugin.json"
+    "plugin.json",
+    "examples"
   ],
   "keywords": [
     "agents",
