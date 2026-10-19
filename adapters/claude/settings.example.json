@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ratchet guard --format claude"
+            "command": "node /path/to/ratchet/adapters/claude/hook.mjs"
           }
         ]
       }

@@ -30,6 +30,20 @@ export default function (pi: ExtensionAPI) {
     if (tool === "read" || tool === "other") return;
 
     const cwd = (ctx as any)?.cwd ?? process.cwd();
+    // Global installs must not touch repos without a contract.
+    let dir = path.resolve(cwd);
+    let hasContract = false;
+    for (;;) {
+      if (fs.existsSync(path.join(dir, ".ratchet", "current"))) {
+        hasContract = true;
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!hasContract) return;
+
     const payload = {
       harness: "pi",
       session_id: (ctx as any)?.sessionManager?.getSessionId?.() ?? null,

@@ -27,8 +27,19 @@ function resolveBin() {
   return "ratchet";
 }
 
+function findContractRoot(start) {
+  let dir = path.resolve(start || process.cwd());
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".ratchet", "current"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 export const RatchetV1 = async ({ directory }) => ({
   "tool.execute.before": async (input, output) => {
+    if (!findContractRoot(directory)) return;
     const tool = kind(input?.tool);
     if (tool === "read" || tool === "other") return;
 

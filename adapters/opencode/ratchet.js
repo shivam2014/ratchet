@@ -24,6 +24,16 @@ function resolveBin() {
   return "ratchet";
 }
 
+function findContractRoot(start) {
+  let dir = path.resolve(start || process.cwd());
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".ratchet", "current"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 export default {
   id: "ratchet",
   setup: async (ctx) => {
@@ -35,6 +45,8 @@ export default {
       process.cwd();
 
     await ctx.tool.hook("execute.before", (event) => {
+      // Global installs must not touch repos without a contract.
+      if (!findContractRoot(directory)) return;
       const name = String(event.tool || "").toLowerCase();
       let tool = "other";
       if (BASH.has(name)) tool = "bash";

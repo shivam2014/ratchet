@@ -244,6 +244,26 @@ test("e2e: --pstack gate blocks source until the plan and sketch exist", () => {
   assert.equal(allowed.status, 0, allowed.stderr);
 });
 
+test("claude adapter: no-ops outside a contract, denies inside", () => {
+  const dir = session();
+  const adapter = path.join(import.meta.dirname, "..", "adapters", "claude", "hook.mjs");
+  const claudeEvent = (file) =>
+    JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: file }, cwd: dir });
+
+  const noop = spawnSync(process.execPath, [adapter], { input: claudeEvent("x.txt"), encoding: "utf8", cwd: dir });
+  assert.equal(noop.status, 0);
+  assert.equal(noop.stdout.trim(), "");
+
+  ratchet(dir, ["init"]);
+  ratchet(dir, ["task", "start", "--role", "coder", "--goal", "g", "--scope", "src/**"]);
+
+  const deny = spawnSync(process.execPath, [adapter], { input: claudeEvent("outside.txt"), encoding: "utf8", cwd: dir });
+  assert.equal(deny.status, 0);
+  const parsed = JSON.parse(deny.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /outside scope/);
+});
+
 test("install: dry run writes nothing", () => {
   const dir = session();
   ratchet(dir, ["init"]);

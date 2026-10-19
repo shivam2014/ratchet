@@ -97,14 +97,16 @@ Install with `ratchet sync --install`, or `ratchet install --harness opencode --
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|Bash",
-        "hooks": [{ "type": "command", "command": "ratchet guard --format claude" }]
+        "hooks": [
+          { "type": "command", "command": "/path/to/node /path/to/ratchet/adapters/claude/hook.mjs" }
+        ]
       }
     ]
   }
 }
 ```
 
-`--format claude` emits the `PreToolUse` `permissionDecision` JSON and exits 0. Claude reads the deny reason and returns it to the model.
+The adapter no-ops outside a repo with `.ratchet/current`, so a user-level install never touches unrelated projects. Inside a contract it forwards the raw hook JSON to `ratchet guard --format claude` and passes the deny decision through.
 
 ### Cursor
 

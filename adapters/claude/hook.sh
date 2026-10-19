@@ -1,5 +1,4 @@
 #!/bin/sh
 # Claude Code PreToolUse hook. Reads the hook JSON on stdin.
-BIN="${RATCHET_BIN:-$HOME/.local/bin/ratchet}"
-[ -x "$BIN" ] || BIN=ratchet
-exec "$BIN" guard --format claude
+# Delegates to the Node adapter, which no-ops outside a Ratchet contract.
+exec node "$(dirname "$0")/hook.mjs"

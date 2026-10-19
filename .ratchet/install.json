@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "installed": {
+    "codex": {
+      "scope": "user",
+      "paths": [
+        "/Users/shivam94/.codex/hooks.json",
+        "/Users/shivam94/.agents/skills/ratchet-mode"
+      ],
+      "at": "2026-10-19T04:25:20.988Z"
+    },
+    "claude": {
+      "scope": "user",
+      "paths": [
+        "/Users/shivam94/.claude/settings.json",
+        "/Users/shivam94/.claude/skills/ratchet-mode"
+      ],
+      "at": "2026-10-19T04:29:07.723Z"
+    }
+  }
+}
