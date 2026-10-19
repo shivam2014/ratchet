@@ -43,7 +43,12 @@
 </head>
 <body>
   <h1>How Ratchet actually runs</h1>
-  <p class="sub">Ratchet is a referee. It never reads the prompt, plans the task, or writes code. It gates tool calls and runs checks.</p>
+  <p class="sub">Ratchet is a referee. In v0 it never reads the prompt, plans the task, or writes code. It gates tool calls and runs checks.</p>
+
+  <div class="card" style="border-color:#3d2f12;background:#1a160d">
+    <b style="color:#f0cf8a">v0 diagram: manual contract.</b>
+    <span class="note"> The target flow adds a prompt router and a stop gate. Ratchet reads the prompt locally to choose a contract profile and a skill shortlist, then runs the checks before the model can finish. See <a href="vision.md" style="color:#a9c6ff">vision.md</a> and <a href="routing.md" style="color:#a9c6ff">routing.md</a>. The statements below about Ratchet not seeing the prompt describe v0.</span>
+  </div>
 
   <svg viewBox="0 0 1460 1080" width="100%" role="img" aria-label="Ratchet flow diagram">
     <defs>
@@ -64,7 +69,7 @@
     <g font-family="ui-sans-serif, system-ui" font-size="15">
       <rect x="30" y="60" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
       <text x="48" y="86" fill="#e8edf7">1. You type: “build Flappy”</text>
-      <text x="48" y="107" fill="#a9c6ff" font-size="13">The prompt goes to the harness. Ratchet never sees it.</text>
+      <text x="48" y="107" fill="#a9c6ff" font-size="13">In v0, the prompt goes to the harness. Ratchet never sees it.</text>
 
       <rect x="30" y="150" width="430" height="62" rx="10" fill="#17356b" stroke="#2f6fed"/>
       <text x="48" y="176" fill="#e8edf7">2. Harness sends the prompt to the model</text>
@@ -163,7 +168,7 @@
 
     <!-- what ratchet never does -->
     <rect x="30" y="960" width="1400" height="92" rx="12" fill="#1a1020" stroke="#5a2a3a"/>
-    <text x="50" y="990" fill="#ff9b9b" font-size="15" font-weight="700" font-family="ui-sans-serif, system-ui">What Ratchet never does</text>
+    <text x="50" y="990" fill="#ff9b9b" font-size="15" font-weight="700" font-family="ui-sans-serif, system-ui">What Ratchet never does in v0</text>
     <text x="50" y="1016" fill="#e8b4bc" font-size="14" font-family="ui-sans-serif, system-ui">read your prompt · plan the feature · write code · call a model · choose the next step · run the agent</text>
     <text x="50" y="1038" fill="#b98a95" font-size="13" font-family="ui-sans-serif, system-ui">It is a referee with a contract and a stopwatch. The harness and model do the work.</text>
   </svg>
@@ -179,6 +184,21 @@
       <tr><td>Model runs <code>ratchet check</code></td><td>Ratchet executes lint/tests/arch/tamper</td><td><code>checks.json</code>: command, exit, duration, output tail</td></tr>
       <tr><td><code>ratchet done</code></td><td>Ratchet reads <code>checks.json</code></td><td><code>result.json</code>; refusal on any failure</td></tr>
       <tr><td>CI re-runs the checks</td><td>GitHub Actions + branch protection</td><td>The authority that survives a bypassed hook</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>The contract from step 5 is this file</h2>
+    <p class="note"><code>.ratchet/runs/&lt;id&gt;/contract.json</code>, with <code>.ratchet/current</code> pointing at the active run. In v0, created by <code>ratchet task start</code> <b>before</b> the prompt; Ratchet never derives it from your message. The target flow creates it from the prompt via <code>ratchet route</code>.</p>
+    <table>
+      <tr><th>Field</th><th>What it means to the guard</th></tr>
+      <tr><td><code>scope</code></td><td>Write allowlist (globs). A path not matched here is denied.</td></tr>
+      <tr><td><code>deny</code></td><td>Always blocked, even if a scope glob matches.</td></tr>
+      <tr><td><code>gates</code></td><td>An artifact must exist before a pattern is writable, e.g. <code>LAWS.bend</code> before <code>**/*.bend</code>.</td></tr>
+      <tr><td><code>budgets</code></td><td>Caps on distinct files and write events. Crossing one denies the write.</td></tr>
+      <tr><td><code>verify</code></td><td>Commands <code>ratchet check</code> runs. <code>ratchet done</code> refuses unless all exit 0.</td></tr>
+      <tr><td><code>role</code> / <code>readOnly</code></td><td>The capability the task is allowed to use.</td></tr>
+      <tr><td><code>goal</code> / <code>id</code> / <code>baseCommit</code></td><td>Audit identity; not used for enforcement.</td></tr>
     </table>
   </div>
 
