@@ -1,13 +1,19 @@
 # Vision: trust by construction
 
 **Status:** draft, 2026-10-20
-**Companions:** [design.md](design.md) for the enforcement kernel; [routing.md](routing.md) for the routing research and evaluation plan.
+**Companions:** [design.md](design.md) for the enforcement kernel; [routing.md](routing.md) for the routing research and evaluation plan; [pi-gap.md](pi-gap.md) for the pi orchestrator → Ratchet gap analysis.
 
 ## The sentence
 
 Every task an agent starts should leave behind a contract, a boundary, and a machine check that can fail — without the user typing a setup command.
 
 The user types the prompt. Ratchet turns it into a small, enforceable task. The model still does the work. The difference is that "done" now means a command exited zero, not that the model said it was done.
+
+## What Ratchet is
+
+Ratchet is a harness-neutral **orchestration and verification framework**. It generalizes the pi orchestrator's system prompt, specialist roles, plan/activity feedback, scope/budgets, and deterministic checks to every harness. It adds the trust ladder: codebase invariants, full static analysis, prose-to-check audit, and human review.
+
+The pi extension is the first implementation and the reference adapter. The contract/evidence kernel is the part that makes the loop trustworthy; it is not the whole product. The gap between the two is documented in [pi-gap.md](pi-gap.md).
 
 ## The problem
 
@@ -167,6 +173,26 @@ A hook is policy, not a sandbox. It can be bypassed by an unhooked tool, a subag
 | Skill registry | Parses installed skills; descriptions, examples, routing metadata | Empty registry → general profile |
 | Adapters | Map harness lifecycle events to the CLI | No-op outside a contract |
 
+### The portable orchestration core
+
+The core owns the decision; adapters own the event plumbing; renderers own the display. This is the same split the pi extension already uses internally, generalized.
+
+| Concept | Portable artifact | Pi source today |
+|---|---|---|
+| Task | `contract.json` | `scope` + `task start` |
+| Route | `route.json` | missing; the orchestrator prompt is static |
+| Role / profile | `profiles.json`, role definitions | `specialists.ts` |
+| Plan | `plan.json`, plan events | `plan-tool.ts`, `plan-panel.ts` |
+| Delegation | child contract | `delegate-pipeline.ts` |
+| Feedback | `events.jsonl` | `activity-feed.ts` |
+| Checks | `checks.json`, `result.json` | `lint-guard.ts` + verify |
+| Rules | `rules.tsv` | missing |
+| Review | `review.json` | missing; `ask_orchestrator` is model-to-model |
+| Adapter | lifecycle map | `index.ts` |
+| Renderer | event → view | `plan-panel.ts`, `activity-feed.ts` |
+
+The core must run without pi. That is the portability test: the same contract, guard, stop gate, and check runner behind every adapter.
+
 ## The trust boundary
 
 The router is not the trust boundary. The contract, the guard, the stop gate, and CI are.
@@ -183,7 +209,7 @@ Do not use a regex maze as the sole router. Do not use an unconstrained LLM as t
 
 ## The pi orchestrator is the reference implementation
 
-The pi orchestrator already contains most of the hard parts of this vision. It is not a competing design to replace; it is the proving ground and the reference adapter. Ratchet should extract the portable kernel and add the two missing lifecycle points, not rebuild the orchestration UX.
+The pi orchestrator is the first implementation of the portable core. It already contains the system prompt composition, specialist roles, plan/activity feedback, scope guard, budgets, and lint loop. Ratchet generalizes those mechanisms across harnesses and adds the missing trust layers; it does not rebuild the pi UX. The detailed gap analysis is in [pi-gap.md](pi-gap.md).
 
 | pi mechanism | Where it lives | What it proves | What Ratchet generalizes |
 |---|---|---|---|
@@ -198,7 +224,7 @@ The pi orchestrator already contains most of the hard parts of this vision. It i
 
 The important distinction is between the **feedback surface** and the **evidence**. The activity feed and the lint message are feedback: they tell the model what to fix, and they are excellent at that. They are not evidence that the task is correct. A lint pass on one edited file does not prove the tests pass, the architecture holds, or the tamper check is intact. That is the gap the stop gate fills.
 
-The other gap is the start of the loop. The orchestrator composes a system prompt when the turn begins, but the user still creates the task manually. Ratchet's `UserPromptSubmit` route creates the contract and injects the brief before the model sees the prompt. The pi adapter then uses the existing `before_agent_start` machinery to deliver it.
+The other gap is the start of the loop. The orchestrator composes a system prompt when the turn begins, but the user still creates the task manually. Ratchet's prompt route (Codex/Claude `UserPromptSubmit`, pi `before_agent_start`) creates the contract and injects the brief before the model sees the prompt. The pi adapter uses the existing `before_agent_start` machinery to deliver it.
 
 So the layering is:
 
@@ -260,11 +286,21 @@ A profile can extend another (`feature` extends `general`), so the common checks
 - **Not a model gateway (yet).** Ratchet does not hold API keys, proxy inference, or stream tokens. The hook-based router shapes context; the harness still talks to the provider. A gateway is a later option for hookless IDEs.
 - **Not a sandbox.** A hook can be bypassed. Containers, read-only checkouts, branch protection, and required checks are the hard boundary.
 - **Not an LLM judge.** No model decides whether the work passes. Models may help route skills; they do not certify.
-- **Not a planner.** The contract is small on purpose. Plans and skills are inputs; checks are the output.
+- **Not a model that plans for you.** Ratchet provides the plan structure, gates, and feedback loop; the model or orchestrator fills the plan. The contract stays small.
 - **Not a replacement for pstack.** pstack is a library of engineering playbooks. Ratchet is the enforcement kernel those playbooks can call.
 - **Not a guarantee against a malicious agent.** It is a guardrail plus evidence. A determined agent with unrestricted shell access can still do damage; that is why the authoritative layers are outside the agent.
 
 ## Phases
+
+### Phase 0: extract the portable core from pi
+
+- Freeze the schemas: contract, route, plan, event, check, result, rules, review. Version them.
+- Move the pure policy out of pi: scope guard, bash classifier, budgets, structured-output parser, check runner. No pi imports; tests run without pi.
+- Define the adapter and renderer interfaces. The event schema is the contract between them.
+- Build the CLI: `ratchet route`, `guard`, `stop`, `check`, `done`, `audit`.
+- Wire the CLI into pi as the reference integration: reuse `prompt-builder.ts`, `specialists.ts`, `activity-feed.ts`, `plan-tool.ts`, and `lint-guard.ts`; keep the TUI.
+
+**Acceptance:** pi still works; the core tests run without pi; a contract can be guarded and checked from the CLI; the same events render in the activity feed.
 
 ### Phase 1: the automatic loop for Codex and Claude
 
@@ -279,7 +315,7 @@ A profile can extend another (`feature` extends `general`), so the common checks
 
 ### Phase 2: the rest of the matrix
 
-- pi adapter: prompt injection via `before_agent_start`; stop via `agent_end` + `sendMessage({ triggerTurn: true, deliverAs: "followUp" })`, reusing the `lint-guard` pattern; surface route/guard/check events in the activity feed.
+- pi parity: the reference adapter uses the same CLI; add parity tests for route, guard, and stop; keep the existing activity feed as a renderer.
 - OpenCode/T3 adapter: prompt injection and stop semantics; document the soft-stop limit.
 - `ratchet run` wrapper for harnesses without hooks.
 - Cursor: verify current hook support; install only if reproducible.
