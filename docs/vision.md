@@ -181,6 +181,40 @@ The first is cheap. The second is mitigated by the general profile always requir
 
 Do not use a regex maze as the sole router. Do not use an unconstrained LLM as the sole router. Use explicit signals, retrieval, a constrained tie-break when needed, and abstention. The full argument and the evidence are in [routing.md](routing.md).
 
+## The pi orchestrator is the reference implementation
+
+The pi orchestrator already contains most of the hard parts of this vision. It is not a competing design to replace; it is the proving ground and the reference adapter. Ratchet should extract the portable kernel and add the two missing lifecycle points, not rebuild the orchestration UX.
+
+| pi mechanism | Where it lives | What it proves | What Ratchet generalizes |
+|---|---|---|---|
+| System prompt composition | `prompt-builder.ts`, `before_agent_start` | A harness can replace the model's role, roster, routing table, scope shape, and communication contract before the turn | `ratchet route` renders the contract brief and skill shortlist; the same policy is rendered per harness |
+| Specialist prompts | `specialists.ts` | Role-specific capabilities, planSteps-first, scope guidance, findings/audit/difficulty | Contract profiles + role/specialist selection; the router chooses the profile, the orchestrator chooses the specialist |
+| Plan + activity feed | `plan-tool.ts`, `activity-feed.ts`, `plan-panel.ts` | Structured steps, substeps, errors, reports, and a live feedback surface | Route, guard, check, and stop events become feed items; `checks.json` remains the evidence |
+| Scope guard | `scope-guard.ts`, `scope-manager.ts` | Per-delegation, fail-closed write boundaries; reads allowed; temp-scratch exceptions; line caps | `contract.scope` + `ratchet guard`, resolved per session; per-child scope for subagents |
+| Counted budgets | `specialists.ts`, budget gate | Exploration/files/turns counted by the framework, not self-reported | `contract.budgets` + deny/escalate; the same numbers in the brief and the gate |
+| Auto-lint | `lint-guard.ts` | After edit/write, run the detected linter; on failure send a `customType: "lint"` message with `triggerTurn: true`, forcing a fix turn | `PostToolUse` fast lint + `Stop` full verification; lint is fast feedback, not the final gate |
+| Structured output | `FINDINGS_AUDIT_TEMPLATE`, Difficulty | Findings, audit, scope notes, and difficulty are structured for the orchestrator | Ratchet records evidence and checks; it never accepts the self-report as proof |
+| `delegate()` | `delegate-tool.ts`, `delegate-pipeline.ts`, `subagent-runner.ts` | Child sessions with role, scope, skills, budgets, and a result contract | The guard applies to child tool calls; each child gets a contract view; the parent gets evidence, not just prose |
+
+The important distinction is between the **feedback surface** and the **evidence**. The activity feed and the lint message are feedback: they tell the model what to fix, and they are excellent at that. They are not evidence that the task is correct. A lint pass on one edited file does not prove the tests pass, the architecture holds, or the tamper check is intact. That is the gap the stop gate fills.
+
+The other gap is the start of the loop. The orchestrator composes a system prompt when the turn begins, but the user still creates the task manually. Ratchet's `UserPromptSubmit` route creates the contract and injects the brief before the model sees the prompt. The pi adapter then uses the existing `before_agent_start` machinery to deliver it.
+
+So the layering is:
+
+```text
+Ratchet policy        contract, profile, scope, verify, evidence
+      ↓
+pi orchestrator       system prompt, specialists, plan, activity feed
+      ↓
+subagents             coder / scout / reviewer / researcher / writer
+      ↓
+checks                lint, typecheck, tests, arch, tamper, CI
+```
+
+Ratchet does not replace `prompt-builder.ts`, `specialists.ts`, or the activity feed. It gives them a portable contract and a final gate. The pi extension remains the best place to see the loop working end to end.
+
+
 ## Seamless across harnesses
 
 There is no single lifecycle-hook contract implemented identically across IDEs. Agent Skills and Agent Plugins package skills, MCP servers, and metadata; they do not give every IDE the same prompt/tool/stop hook contract. "Every IDE" is therefore an adapter matrix plus a fallback ladder, not one magic integration.
@@ -189,7 +223,7 @@ There is no single lifecycle-hook contract implemented identically across IDEs. 
 |---|---|---|---|---|
 | Codex | `UserPromptSubmit` | `PreToolUse` | `Stop` | Tool guard installed; prompt + stop next |
 | Claude Code | `UserPromptSubmit` | `PreToolUse` | `Stop` | Tool guard installed; prompt + stop next |
-| pi | `before_agent_start` (prompt + system prompt) | `tool_call` | `agent_end` + queued follow-up (soft) | Adapter exists; stop needs verification |
+| pi | `before_agent_start` (prompt + system prompt) | `tool_call` | `agent_end` + `sendMessage({ triggerTurn: true })` (soft) | Reference implementation; add the full-contract stop gate |
 | OpenCode 2 | plugin `chat.message` / system transform (verify v2) | `tool.execute.before` | session idle + client prompt (soft) | Tool guard exists; prompt/stop partial |
 | T3 Code | inherits the OpenCode harness | inherits OpenCode | inherits OpenCode; T3-owned tools may bypass | Partial; verify |
 | Cursor | verify current hooks | verify current hooks | verify current hooks | Not installed; no claim |
@@ -245,7 +279,7 @@ A profile can extend another (`feature` extends `general`), so the common checks
 
 ### Phase 2: the rest of the matrix
 
-- pi adapter: prompt injection via `before_agent_start`; stop via `agent_end` + queued follow-up; verify.
+- pi adapter: prompt injection via `before_agent_start`; stop via `agent_end` + `sendMessage({ triggerTurn: true, deliverAs: "followUp" })`, reusing the `lint-guard` pattern; surface route/guard/check events in the activity feed.
 - OpenCode/T3 adapter: prompt injection and stop semantics; document the soft-stop limit.
 - `ratchet run` wrapper for harnesses without hooks.
 - Cursor: verify current hook support; install only if reproducible.
