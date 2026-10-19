@@ -17,8 +17,13 @@ function session() {
   return dir;
 }
 
-function ratchet(cwd, args, input) {
-  return spawnSync(process.execPath, [BIN, ...args], { cwd, input, encoding: "utf8" });
+function ratchet(cwd, args, input, env) {
+  return spawnSync(process.execPath, [BIN, ...args], {
+    cwd,
+    input,
+    encoding: "utf8",
+    env: env ? { ...process.env, ...env } : process.env,
+  });
 }
 
 function event(tool, input, cwd) {
@@ -179,24 +184,44 @@ test("install: claude hook is idempotent and preserves settings", () => {
 
 test("install: codex hook is merged, idempotent, and removable", () => {
   const dir = session();
-  ratchet(dir, ["init"]);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-codex-home-"));
+  const env = { HOME: home, CODEX_HOME: path.join(home, ".codex") };
+  ratchet(dir, ["init"], undefined, env);
   const hooksFile = path.join(dir, ".codex/hooks.json");
   fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
   fs.writeFileSync(hooksFile, JSON.stringify({ hooks: { PostToolUse: [] } }, null, 2));
 
-  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"]).status, 0);
+  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const first = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
   assert.equal(first.hooks.PostToolUse.length, 0);
   assert.equal(first.hooks.PreToolUse.length, 1);
   assert.match(first.hooks.PreToolUse[0].hooks[0].command, /adapters\/codex\/hook\.mjs/);
 
-  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"]).status, 0);
+  assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const second = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
   assert.equal(second.hooks.PreToolUse.length, 1);
 
-  assert.equal(ratchet(dir, ["uninstall", "--harness", "codex", "--project"]).status, 0);
+  assert.equal(ratchet(dir, ["uninstall", "--harness", "codex", "--project"], undefined, env).status, 0);
   const third = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
   assert.equal(third.hooks.PreToolUse.length, 0);
+});
+
+test("doctor: isolated codex and claude harnesses pass, bad trust fails", () => {
+  const dir = session();
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-doctor-home-"));
+  const env = { HOME: home, CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: path.join(home, ".claude") };
+  ratchet(dir, ["init"], undefined, env);
+  assert.equal(ratchet(dir, ["install", "--harness", "codex,claude", "--user", "--yes"], undefined, env).status, 0);
+
+  const codex = ratchet(dir, ["doctor", "--harness", "codex"], undefined, env);
+  assert.equal(codex.status, 0, codex.stdout + codex.stderr);
+  const claude = ratchet(dir, ["doctor", "--harness", "claude"], undefined, env);
+  assert.equal(claude.status, 0, claude.stdout + claude.stderr);
+
+  const config = path.join(env.CODEX_HOME, "config.toml");
+  fs.writeFileSync(config, fs.readFileSync(config, "utf8").replace(/sha256:[a-f0-9]+/, "sha256:deadbeef"));
+  const bad = ratchet(dir, ["doctor", "--harness", "codex"], undefined, env);
+  assert.equal(bad.status, 1, bad.stdout + bad.stderr);
 });
 
 test("guard: claude format allows in scope and denies out of scope", () => {

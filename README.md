@@ -122,7 +122,7 @@ ratchet status
 | `ratchet check` | Run the contract's verification commands, save evidence |
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
-| `ratchet doctor` | Check the install |
+| `ratchet doctor` | Check the install; `--harness codex,claude` verifies hooks, trust, and no-op behavior |
 | `ratchet sync` | Write the managed `AGENTS.md` block; `--install` adds the OpenCode and git hooks |
 
 ## State

@@ -159,7 +159,9 @@ Codex 0.163 ships a `PreToolUse` hook that covers `Bash`, `apply_patch`, MCP too
 }
 ```
 
-`ratchet install --harness codex --user` writes this. The adapter is a no-op outside a repo with `.ratchet/current`, so a user-level install does not block unrelated projects.
+`ratchet install --harness codex --user` writes this and then writes the trust hash Codex expects into `~/.codex/config.toml` under `[hooks.state."<hooks.json>:pre_tool_use:0:0"]`. The hash algorithm (verified on Codex 0.163) is reproduced in `lib/codex-trust.mjs`. If the hash does not match after a Codex upgrade, the hook stays untrusted rather than silently allowing writes; run `/hooks` in the TUI to trust it again, or `node adapters/codex/trust.mjs` to recompute.
+
+`ratchet doctor --harness codex` verifies the hook is present, the command is exact, the trust hash matches, and the adapter no-ops outside a contract.
 
 Codex delivers `Bash` and `apply_patch` as `tool_input.command`. The adapter maps that to Ratchet's `bash` and `write` events and returns Codex's deny JSON on a block.
 

@@ -46,6 +46,8 @@ import {
   which,
 } from "../lib/harnesses.mjs";
 import readline from "node:readline/promises";
+import os from "node:os";
+import { codexHome, findRatchetHook, hookTrustHash, readTrustHash } from "../lib/codex-trust.mjs";
 
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
@@ -380,7 +382,68 @@ function commandAudit(args) {
   process.exit(report.errors.length ? 1 : 0);
 }
 
-function commandDoctor() {
+function adapterNoops(adapterPath, event) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-doctor-"));
+  try {
+    const result = spawnSync(process.execPath, [adapterPath], {
+      input: JSON.stringify({ ...event, cwd: tmp }),
+      encoding: "utf8",
+      cwd: tmp,
+    });
+    return { ok: result.status === 0 && result.stdout.trim() === "", detail: (result.stderr || result.stdout || "").trim() };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function harnessChecks(repoRoot, requested) {
+  const checks = [];
+  const add = (name, ok, detail, hard = true) => checks.push({ name, ok, detail, hard });
+  const home = process.env.HOME || "";
+
+  if (requested.includes("codex")) {
+    const dir = codexHome(home);
+    const hooksFile = path.join(dir, "hooks.json");
+    const found = findRatchetHook(hooksFile);
+    add("codex hook present", Boolean(found), hooksFile);
+    if (found) {
+      const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "codex", "hook.mjs")}`;
+      add("codex command exact", found.handler.command === expected, found.handler.command);
+      const computed = hookTrustHash(found.group, found.handler);
+      const recorded = readTrustHash(dir);
+      add("codex trust hash", recorded === computed, recorded ? `recorded ${recorded.slice(0, 20)}…` : "missing");
+    }
+    const noop = adapterNoops(path.join(repoRoot, "adapters", "codex", "hook.mjs"), {
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** Add File: x.txt\n+hi\n*** End Patch" },
+    });
+    add("codex adapter no-op", noop.ok, noop.detail || "silent outside a contract");
+  }
+
+  if (requested.includes("claude")) {
+    const dir = process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude");
+    const settingsFile = path.join(dir, "settings.json");
+    const settings = readJson(settingsFile, null);
+    const handler = (settings?.hooks?.PreToolUse ?? [])
+      .flatMap((entry) => entry?.hooks ?? [])
+      .find((h) => typeof h?.command === "string" && h.command.includes("ratchet"));
+    add("claude hook present", Boolean(handler), settingsFile);
+    if (handler) {
+      const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "claude", "hook.mjs")}`;
+      add("claude command exact", handler.command === expected, handler.command);
+    }
+    const noop = adapterNoops(path.join(repoRoot, "adapters", "claude", "hook.mjs"), {
+      hook_event_name: "PreToolUse",
+      tool_name: "Write",
+      tool_input: { file_path: "x.txt" },
+    });
+    add("claude adapter no-op", noop.ok, noop.detail || "silent outside a contract");
+  }
+
+  return checks;
+}
+
+function commandDoctor(args) {
   const root = findRoot(process.cwd());
   const checks = [];
   const add = (name, ok, detail = "", hard = false) => checks.push({ name, ok, detail, hard });
@@ -400,6 +463,13 @@ function commandDoctor() {
     const ok = paths.length > 0 && paths.every((p) => fs.lstatSync(p, { throwIfNoEntry: false }));
     add(`${LABEL[name] ?? name} adapter`, ok, `${record.scope}: ${paths.join(", ")}`);
   }
+  const requested = args
+    .all("harness")
+    .flatMap((value) => String(value).split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (requested.includes("all")) requested.push("codex", "claude");
+  if (requested.length) checks.push(...harnessChecks(path.join(import.meta.dirname, ".."), requested));
   for (const c of checks) out(`${c.ok ? "PASS" : c.hard ? "FAIL" : "WARN"}  ${c.name}  ${c.detail}`);
   process.exit(checks.some((c) => c.hard && !c.ok) ? 1 : 0);
 }
@@ -683,7 +753,7 @@ usage:
   ratchet check [--timeout 120000]
   ratchet done
   ratchet audit [--json]
-  ratchet doctor
+  ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
   ratchet install [--harness pi,claude,opencode,t3,codex] [--user|--project] [--all] [--dry-run] [--yes]
   ratchet uninstall [--harness ...] [--dry-run]
@@ -734,7 +804,7 @@ switch (cmd) {
     commandAudit(args);
     break;
   case "doctor":
-    commandDoctor();
+    commandDoctor(args);
     break;
   case "sync":
     commandSync(args);
