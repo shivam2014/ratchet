@@ -123,7 +123,9 @@ Ratchet ACP proxy
 Real agent (Claude, Codex, Cursor, OpenCode, pi, …)
 ```
 
-The editor points its agent command at `ratchet acp -- <real-agent-command>`. Ratchet speaks ACP on both sides. It can:
+The editor points its agent command at `ratchet acp -- <real-agent-command>`. Ratchet speaks ACP on both sides. This is a two-ended wrapper; the RFD's conductor/proxy chain is the standardized form of the same idea. The wrapper is implementable today without editor support for first-class proxy installation.
+
+It can:
 
 | ACP surface | Ratchet use | Guarantee |
 |---|---|---|
