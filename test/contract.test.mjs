@@ -7,6 +7,7 @@ import {
   createContract,
   detectChecks,
   loadRun,
+  loadRunForSession,
   normaliseTarget,
   saveContract,
 } from "../lib/contract.mjs";
@@ -82,4 +83,30 @@ test("loadRun: reads the current contract", (t) => {
   const contract = createContract(root, { goal: "g", role: "coder", scope: ["src/**"] });
   saveContract(root, contract);
   assert.equal(loadRun(root)?.id, contract.id);
+});
+
+test("loadRunForSession: a session uses its own contract", (t) => {
+  const root = temp(t);
+  const a = createContract(root, { goal: "session a", role: "coder", scope: ["src/**"] });
+  a.session_id = "A";
+  saveContract(root, a);
+  const b = createContract(root, { goal: "session b", role: "coder", scope: ["lib/**"] });
+  b.session_id = "B";
+  saveContract(root, b);
+
+  assert.equal(loadRunForSession(root, "A")?.id, a.id);
+  assert.equal(loadRunForSession(root, "B")?.id, b.id);
+  assert.equal(loadRunForSession(root, "C"), null);
+});
+
+test("loadRunForSession: a manual contract is the fallback", (t) => {
+  const root = temp(t);
+  const bound = createContract(root, { goal: "auto", role: "coder", scope: ["src/**"] });
+  bound.session_id = "A";
+  saveContract(root, bound);
+  const manual = createContract(root, { goal: "manual", role: "coder", scope: ["lib/**"] });
+  saveContract(root, manual);
+
+  assert.equal(loadRunForSession(root, "A")?.id, bound.id);
+  assert.equal(loadRunForSession(root, "B")?.id, manual.id);
 });

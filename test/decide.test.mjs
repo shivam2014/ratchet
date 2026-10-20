@@ -103,6 +103,23 @@ test("decide: a symlink inside the scope still works", (t) => {
   assert.deepEqual(decision.paths, ["src/real/a.ts"]);
 });
 
+test("decide: each session uses its own scope", (t) => {
+  const root = emptyRepo(t);
+  const a = createContract(root, { goal: "session a", role: "coder", scope: ["src/**"] });
+  a.session_id = "A";
+  saveContract(root, a);
+  const b = createContract(root, { goal: "session b", role: "coder", scope: ["lib/**"] });
+  b.session_id = "B";
+  saveContract(root, b);
+
+  const write = (session_id, target) =>
+    decide(root, { harness: "test", session_id, tool: "write", input: { path: target } });
+  assert.equal(write("A", "src/a.ts").allow, true);
+  assert.equal(write("A", "lib/a.ts").allow, false);
+  assert.equal(write("B", "lib/a.ts").allow, true);
+  assert.equal(write("B", "src/a.ts").allow, false);
+});
+
 test("decide: read-only contract blocks writes", (t) => {
   const { root } = repo(t, { readOnly: true });
   const decision = decide(root, event("write", { path: "src/a.ts" }));

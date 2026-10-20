@@ -78,12 +78,20 @@ test("route: the created contract locks the check surface", (t) => {
   assert.deepEqual(saved.checksLock, lock);
 });
 
-test("route: a second prompt reuses the active contract", (t) => {
+test("route: a second prompt in the same session reuses the contract", (t) => {
+  const root = repo(t);
+  const first = routePrompt(root, prompt(root, "first", "s-1"));
+  const second = routePrompt(root, prompt(root, "second", "s-1"));
+  assert.equal(second.created, false);
+  assert.equal(second.contract.id, first.contract.id);
+});
+
+test("route: a different session gets its own contract", (t) => {
   const root = repo(t);
   const first = routePrompt(root, prompt(root, "first", "s-1"));
   const second = routePrompt(root, prompt(root, "second", "s-2"));
-  assert.equal(second.created, false);
-  assert.equal(second.contract.id, first.contract.id);
+  assert.equal(second.created, true);
+  assert.notEqual(second.contract.id, first.contract.id);
 });
 
 test("route: auto disabled leaves the manual flow alone", (t) => {
