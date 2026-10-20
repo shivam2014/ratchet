@@ -23,7 +23,7 @@ Total: 187 tests, all passing.
 npm test
 ```
 
-The CLI stress matrix runs the real binary through 25 edge cases, each in its own process. It stays outside `npm test` for speed.
+The CLI stress matrix runs the real binary through 26 edge cases, each in its own process. It stays outside `npm test` for speed.
 
 ```bash
 npm run test:stress

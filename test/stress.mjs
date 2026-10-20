@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createContract, saveContract } from "../lib/contract.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -47,6 +47,24 @@ function hook(cwd, payload, raw) {
     json = JSON.parse(r.stdout);
   } catch {}
   return { code: r.status, json: json ?? {}, stderr: r.stderr };
+}
+
+function hookAsync(cwd, payload) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [BIN, "hook"], { cwd });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (code) => {
+      let json = {};
+      try {
+        json = JSON.parse(stdout);
+      } catch {}
+      resolve({ code, json, stderr });
+    });
+    child.stdin.end(JSON.stringify(payload));
+  });
 }
 
 process.on("exit", () => {
@@ -159,6 +177,26 @@ const aDenied = r.code === 2;
 r = before("write", { path: "lib/b.ts" }, "session-B");
 const bAllowed = r.code === 0;
 check("each session uses its own contract", aDenied && bAllowed, `A=${aDenied} B=${bAllowed}`);
+
+const write = (session, target) => ({
+  type: "tool.before",
+  harness: "stress",
+  session_id: session,
+  cwd: T,
+  tool: "write",
+  input: { path: target },
+});
+const [aOk, bOk, aBad, bBad] = await Promise.all([
+  hookAsync(T, write("session-A", "src/a.ts")),
+  hookAsync(T, write("session-B", "lib/b.ts")),
+  hookAsync(T, write("session-A", "lib/a.ts")),
+  hookAsync(T, write("session-B", "src/b.ts")),
+]);
+check(
+  "concurrent sessions keep their own scope",
+  aOk.code === 0 && bOk.code === 0 && aBad.code === 2 && bBad.code === 2,
+  `A=${aOk.code}/${aBad.code} B=${bOk.code}/${bBad.code}`,
+);
 
 const failures = rows.filter((row) => !row.ok);
 console.log(`\nsummary pass=${rows.length - failures.length} fail=${failures.length}`);
