@@ -17,13 +17,13 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 191 tests, all passing.
+Total: 193 tests, all passing.
 
 ```bash
 npm test
 ```
 
-The CLI stress matrix runs the real binary through 26 edge cases, each in its own process. It stays outside `npm test` for speed.
+The CLI stress matrix runs the real binary through 32 edge cases, each in its own process. It stays outside `npm test` for speed.
 
 ```bash
 npm run test:stress
@@ -72,5 +72,6 @@ Each was fixed at the source and has a test or a documented proof.
 - Interactive hook trust: Codex `/hooks` and Claude's trust prompt were bypassed with flags in automation.
 - MCP tool classification: unknown tools are allowed and left to CI.
 - Subagent tool calls: not exercised in any harness.
+- T3 provider loading and the live kill switch were proven once in a real thread. Neither is automated.
 - Cursor: no adapter or test.
 - Formal verification: not implemented as a check type.
