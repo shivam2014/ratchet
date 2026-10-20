@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:stress": "node test/stress.mjs",
     "test:codex": "bash test/codex-e2e.sh",
     "test:claude": "bash test/claude-e2e.sh",
     "test:pi": "bash test/pi-e2e.sh",
