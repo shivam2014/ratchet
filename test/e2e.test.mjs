@@ -322,3 +322,54 @@ test("install: dry run writes nothing", () => {
   assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), false);
   assert.equal(fs.existsSync(path.join(dir, ".ratchet/install.json")), false);
 });
+
+test("e2e: ratchet hook drives the normalized lifecycle", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "hook failing",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(1)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  const hook = (payload) => ratchet(dir, ["hook"], JSON.stringify(payload));
+  const lifecycle = (type, extra = {}) => ({ type, harness: "test", session_id: "s-1", cwd: dir, ...extra });
+
+  const stop = hook(lifecycle("turn.stop"));
+  assert.equal(stop.status, 2, stop.stderr);
+  assert.equal(JSON.parse(stop.stdout).allow, false);
+  assert.match(stop.stderr, /checks failed/);
+
+  const before = hook(lifecycle("tool.before", { tool: "write", input: { path: "lib/x.ts" } }));
+  assert.equal(before.status, 2, before.stderr);
+  assert.equal(JSON.parse(before.stdout).allow, false);
+
+  const prompt = hook(lifecycle("prompt.submit", { prompt: "keep going" }));
+  assert.equal(prompt.status, 0, prompt.stderr);
+  assert.match(JSON.parse(prompt.stdout).context, /## Task contract/);
+
+  const after = hook(lifecycle("tool.after", { tool: "write", input: { path: "src/a.ts" }, result: { exit: 0 } }));
+  assert.equal(after.status, 0, after.stderr);
+  assert.equal(JSON.parse(after.stdout).continue, true);
+
+  const fresh = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "hook passing",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(fresh.status, 0, fresh.stderr);
+
+  const allowed = hook(lifecycle("turn.stop"));
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.equal(JSON.parse(allowed.stdout).certified, true);
+
+  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "checks.json"), "utf8"));
+  assert.equal(saved.ok, true);
+});
+

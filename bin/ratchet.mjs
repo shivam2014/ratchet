@@ -33,6 +33,8 @@ import {
 } from "../lib/contract.mjs";
 import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
+import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
+import { evaluateStop } from "../lib/stop.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
 import {
@@ -269,6 +271,20 @@ function disabledState(root) {
   return state?.disabled ? state : null;
 }
 
+function guardFor(root, event) {
+  const disabled = disabledState(root);
+  return disabled
+    ? {
+        allow: true,
+        reason: `ratchet disabled: ${disabled.reason}`,
+        paths: [],
+        op: "other",
+        runId: loadRun(root)?.id ?? null,
+        disabled: true,
+      }
+    : decide(root, event);
+}
+
 function commandGuard(args) {
   const raw = fs.readFileSync(0, "utf8").trim();
   if (!raw) fail("guard expects a JSON event on stdin");
@@ -280,17 +296,7 @@ function commandGuard(args) {
   }
   const event = normaliseEvent(parsed);
   const root = findRoot(event.cwd || process.cwd());
-  const disabled = disabledState(root);
-  const decision = disabled
-    ? {
-        allow: true,
-        reason: `ratchet disabled: ${disabled.reason}`,
-        paths: [],
-        op: "other",
-        runId: loadRun(root)?.id ?? null,
-        disabled: true,
-      }
-    : decide(root, event);
+  const decision = guardFor(root, event);
   record(root, event, decision);
 
   const format = String(args.one("format", "default"));
@@ -305,6 +311,47 @@ function commandGuard(args) {
   }
   out(JSON.stringify(decision));
   if (!decision.allow) {
+    process.stderr.write(`[ratchet] ${decision.reason}\n`);
+    process.exit(2);
+  }
+}
+
+function commandHook() {
+  const raw = fs.readFileSync(0, "utf8").trim();
+  if (!raw) fail("hook expects a JSON event on stdin");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    fail("hook: stdin is not valid JSON");
+  }
+  let event;
+  try {
+    event = parseEvent(parsed);
+  } catch (err) {
+    if (err instanceof EventError) fail("hook: " + err.message, 2);
+    throw err;
+  }
+
+  const root = findRoot(event.cwd);
+  let decision;
+  if (event.type === "prompt.submit") {
+    const contract = loadRun(root);
+    decision = { context: contract ? briefText(root, contract) : null };
+    appendEvent(root, event, decision);
+  } else if (event.type === "tool.before") {
+    decision = guardFor(root, event);
+    record(root, event, decision);
+  } else if (event.type === "tool.after") {
+    decision = { continue: true, context: null };
+    appendEvent(root, event, decision);
+  } else {
+    decision = evaluateStop(root, event);
+    appendEvent(root, event, decision);
+  }
+
+  out(JSON.stringify(decision));
+  if (decision.allow === false) {
     process.stderr.write(`[ratchet] ${decision.reason}\n`);
     process.exit(2);
   }
@@ -689,6 +736,25 @@ function commandSync(args) {
   }
 }
 
+function briefText(root, contract) {
+  const state = loadState(root, contract.id);
+  return [
+    `## Task contract ${contract.id}`,
+    `Goal: ${contract.goal}`,
+    `Role: ${contract.role}${contract.readOnly ? " (read-only)" : ""}`,
+    `Write scope: ${contract.scope.join(", ") || "(none)"}`,
+    `Denied: ${contract.deny.join(", ") || "(none)"}`,
+    `Budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`,
+    `Verify: ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`,
+    "",
+    "Enforced by the guard, not by this prompt:",
+    "- Writes outside the scope are denied. Reads are allowed.",
+    "- `ratchet done` refuses without a passing `ratchet check`.",
+    "",
+    "If a write is blocked, finish within scope or start a new contract with a wider scope.",
+  ].join("\n");
+}
+
 function commandPrompt(args) {
   const root = findRoot(process.cwd());
   const contract = requireContract(root);
@@ -708,19 +774,7 @@ function commandPrompt(args) {
     out(JSON.stringify(brief, null, 2));
     return;
   }
-  out(`## Task contract ${contract.id}`);
-  out(`Goal: ${contract.goal}`);
-  out(`Role: ${contract.role}${contract.readOnly ? " (read-only)" : ""}`);
-  out(`Write scope: ${contract.scope.join(", ") || "(none)"}`);
-  out(`Denied: ${contract.deny.join(", ") || "(none)"}`);
-  out(`Budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`);
-  out(`Verify: ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
-  out("");
-  out("Enforced by the guard, not by this prompt:");
-  out("- Writes outside the scope are denied. Reads are allowed.");
-  out("- `ratchet done` refuses without a passing `ratchet check`.");
-  out("");
-  out("If a write is blocked, finish within scope or start a new contract with a wider scope.");
+  out(briefText(root, contract));
 }
 
 function commandReport(args) {
@@ -761,6 +815,7 @@ usage:
   ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
+  ratchet hook                                # normalized lifecycle event on stdin
   ratchet check [--timeout 120000]
   ratchet done
   ratchet audit [--json]
@@ -804,6 +859,9 @@ switch (cmd) {
     break;
   case "guard":
     commandGuard(args);
+    break;
+  case "hook":
+    commandHook();
     break;
   case "check":
     commandCheck(args);
