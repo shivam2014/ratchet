@@ -16,7 +16,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | Filesystem helpers | `test/fsx.test.mjs` | root discovery, relative/absolute paths, JSON round trip, slug, timestamp |
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 
-Total: 162 tests, all passing.
+Total: 170 tests, all passing.
 
 ```bash
 npm test
