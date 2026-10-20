@@ -72,6 +72,10 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--") {
+      positional.push(...argv.slice(i + 1));
+      break;
+    }
     if (!arg.startsWith("--")) {
       positional.push(arg);
       continue;
@@ -405,6 +409,29 @@ function gitFacts(root) {
   };
 }
 
+function resultFor(root, contract, checks, extra = {}) {
+  const state = loadState(root, contract.id);
+  return {
+    version: 1,
+    id: contract.id,
+    goal: contract.goal,
+    role: contract.role,
+    verdict: checks?.ok ? "done" : "failed",
+    finishedAt: new Date().toISOString(),
+    counts: { files: state.files.size, writes: state.writes },
+    checks: checks
+      ? {
+          ok: checks.ok,
+          ranAt: checks.ranAt,
+          empty: Boolean(checks.empty),
+          results: checks.results.map((r) => ({ id: r.id, status: r.status, durationMs: r.durationMs })),
+        }
+      : null,
+    git: gitFacts(root),
+    ...extra,
+  };
+}
+
 function commandDone() {
   const root = findRoot(process.cwd());
   const contract = requireContract(root);
@@ -416,27 +443,88 @@ function commandDone() {
   if (!checks) fail("REFUSED: no check evidence. Run: ratchet check");
   if (!checks.ok) fail("REFUSED: the last check run failed. Fix it, then run: ratchet check");
 
-  const state = loadState(root, contract.id);
-  const result = {
-    version: 1,
-    id: contract.id,
-    goal: contract.goal,
-    role: contract.role,
-    verdict: "done",
-    finishedAt: new Date().toISOString(),
-    counts: { files: state.files.size, writes: state.writes },
-    checks: {
-      ok: checks.ok,
-      ranAt: checks.ranAt,
-      results: checks.results.map((r) => ({ id: r.id, status: r.status, durationMs: r.durationMs })),
-    },
-    git: gitFacts(root),
-  };
+  const result = resultFor(root, contract, checks, { verdict: "done" });
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
   out(`DONE  ${contract.id}`);
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
   out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
   out(`changed: ${result.git.changed ?? "?"} file(s)`);
+}
+
+function contractForRun(root, args, command) {
+  const config = requireConfig(root);
+  const auto = config.auto ?? {};
+  const goal = String(args.one("goal", command.join(" ")) || "run");
+  const scope = args.all("scope").length
+    ? args.all("scope")
+    : Array.isArray(auto.scope)
+      ? auto.scope
+      : config.defaults?.scope ?? [];
+  if (!scope.length) fail("run needs --scope, or auto.scope in .ratchet/config.json");
+  const verify = args.all("verify").length
+    ? args.all("verify")
+    : (config.checks ?? []).map((check) => check.cmd);
+  const contract = createContract(root, {
+    goal,
+    role: String(args.one("role", "coder")),
+    scope,
+    deny: [...new Set([...(config.defaults?.deny ?? []), ...(auto.deny ?? [])])],
+    gates: [...(config.gates ?? []), ...(auto.gates ?? [])],
+    maxFiles: Number(args.one("max-files", auto.maxFiles ?? config.defaults?.maxFiles ?? 12)),
+    maxWrites: Number(args.one("max-writes", auto.maxWrites ?? config.defaults?.maxWrites ?? 60)),
+    verify,
+    checkSurface: lockCheckSurface(root, verify),
+  });
+  saveContract(root, contract);
+  return contract;
+}
+
+function commandRun(args) {
+  const root = findRoot(process.cwd());
+  const command = args.positional;
+  if (!command.length) fail('run needs a command: ratchet run [flags] -- <command...>');
+
+  const contract = contractForRun(root, args, command);
+  const dir = runDir(root, contract.id);
+  const briefFile = path.join(dir, "brief.md");
+  writeText(briefFile, briefText(root, contract, { guarded: false }) + "\n");
+  out(`run:     ${contract.id}`);
+  out(`brief:   ${briefFile}`);
+  out(`verify:  ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
+
+  const started = Date.now();
+  const child = spawnSync(command[0], command.slice(1), {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      RATCHET: "1",
+      RATCHET_RUN: contract.id,
+      RATCHET_BRIEF: briefFile,
+      RATCHET_CONTRACT: path.join(dir, "contract.json"),
+    },
+  });
+  const commandStatus = child.status ?? 1;
+  if (child.error) out(`command: fail (${child.error.message})`);
+
+  const checks = runChecks(root, contract.verify, { timeoutMs: Number(args.one("timeout", 120000)) });
+  saveChecks(root, contract.id, checks);
+  const verdict = checks.empty ? "uncertified" : checks.ok ? "done" : "failed";
+  const result = resultFor(root, contract, checks, {
+    verdict,
+    guard: "post-hoc",
+    counts: { files: null, writes: null },
+    command: command.join(" "),
+    commandStatus,
+    durationMs: Date.now() - started,
+  });
+  writeJson(path.join(dir, "result.json"), result);
+
+  out(`command: ${commandStatus === 0 ? "pass" : `fail (${commandStatus})`}`);
+  out(`checks:  ${checks.empty ? "none" : checks.ok ? "pass" : "fail"}`);
+  out(`verdict: ${verdict}`);
+  out(`result:  ${path.join(dir, "result.json")}`);
+  process.exit(commandStatus === 0 && checks.ok ? 0 : 1);
 }
 
 function commandAudit(args) {
@@ -799,7 +887,7 @@ function oneLine(text, max = 160) {
   return flat.length > max ? `${flat.slice(0, max - 3).trimEnd()}...` : flat;
 }
 
-function briefText(root, contract) {
+function briefText(root, contract, { guarded = true } = {}) {
   const state = loadState(root, contract.id);
   const lines = [
     `## Task contract ${contract.id}`,
@@ -827,12 +915,24 @@ function briefText(root, contract) {
     `Budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`,
     `Verify: ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`,
     "",
-    "Enforced by the guard, not by this prompt:",
-    "- Writes outside the scope are denied. Reads are allowed.",
-    "- `ratchet done` refuses without a passing `ratchet check`.",
-    "",
-    "If a write is blocked, finish within scope or start a new contract with a wider scope.",
   );
+  if (guarded) {
+    lines.push(
+      "Enforced by the guard, not by this prompt:",
+      "- Writes outside the scope are denied. Reads are allowed.",
+      "- `ratchet done` refuses without a passing `ratchet check`.",
+      "",
+      "If a write is blocked, finish within scope or start a new contract with a wider scope.",
+    );
+  } else {
+    lines.push(
+      "Enforced after the run, not during it:",
+      "- The wrapper runs the verify commands when the command exits.",
+      "- It cannot deny a tool call. The git hook and CI remain the authority.",
+      "",
+      "Keep the work inside the scope. The checks at the end decide whether it passed.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -899,6 +999,7 @@ usage:
   ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
+  ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] -- <command...>
   ratchet check [--timeout 120000]
   ratchet done
   ratchet audit [--json]
@@ -945,6 +1046,9 @@ switch (cmd) {
     break;
   case "hook":
     commandHook();
+    break;
+  case "run":
+    commandRun(args);
     break;
   case "check":
     commandCheck(args);
