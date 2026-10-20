@@ -40,7 +40,7 @@ node ~/ratchet/bin/ratchet.mjs install --project --harness pi,claude,opencode,t3
 3. Installs `.git/hooks/pre-commit` so a failing check stops the commit locally.
 4. Records every path in `.ratchet/install.json` so uninstall is exact.
 
-Codex has a `PreToolUse` hook (0.163+). `install --harness codex` writes it and the skill. Trust the hook with `/hooks`, or use `--dangerously-bypass-hook-trust` in automation. The adapter is a no-op outside a repo with `.ratchet/current`.
+Codex has lifecycle hooks for `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop` (0.163+). `install --harness codex` writes all four and the skill, then writes their trust hashes into the Codex config. Trust with `/hooks` if an upgrade invalidates the hashes, or use `--dangerously-bypass-hook-trust` in automation. The adapter is a no-op outside a repo with `.ratchet/config.json` or `.ratchet/current`.
 
 For Cursor, use the same `PreToolUse` shape as Claude Code and verify the current hook config.
 

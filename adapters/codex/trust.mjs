@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Trust the Ratchet Codex hook for the current CODEX_HOME by writing the
+ * Trust the Ratchet Codex hooks for the current CODEX_HOME by writing the
  * trust hash Codex expects. See lib/codex-trust.mjs for the algorithm.
  *
  * Prefer `ratchet install --harness codex --user`, which runs this
@@ -13,5 +13,7 @@ if (!result.ok) {
   console.error(result.reason);
   process.exit(1);
 }
-console.log(`trusted ${result.key}`);
-console.log(result.trusted);
+for (const entry of result.entries) {
+  console.log(`trusted ${entry.event} ${entry.key}`);
+  console.log(entry.trusted);
+}

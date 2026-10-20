@@ -42,6 +42,7 @@ import {
   ORDER,
   LABEL,
   CLAUDE_HOOK_EVENTS,
+  CODEX_HOOK_EVENTS,
   detectHarnesses,
   installHarness,
   uninstallHarness,
@@ -51,7 +52,7 @@ import {
 } from "../lib/harnesses.mjs";
 import readline from "node:readline/promises";
 import os from "node:os";
-import { codexHome, findRatchetHook, hookTrustHash, readTrustHash } from "../lib/codex-trust.mjs";
+import { codexHome, findRatchetHooks, hookTrustHash, readTrustHash } from "../lib/codex-trust.mjs";
 
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
@@ -460,28 +461,57 @@ function adapterNoops(adapterPath, event) {
   }
 }
 
-function harnessChecks(repoRoot, requested) {
+function harnessChecks(repoRoot, requested, root) {
   const checks = [];
   const add = (name, ok, detail, hard = true) => checks.push({ name, ok, detail, hard });
   const home = process.env.HOME || "";
 
   if (requested.includes("codex")) {
     const dir = codexHome(home);
-    const hooksFile = path.join(dir, "hooks.json");
-    const found = findRatchetHook(hooksFile);
-    add("codex hook present", Boolean(found), hooksFile);
-    if (found) {
-      const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "codex", "hook.mjs")}`;
-      add("codex command exact", found.handler.command === expected, found.handler.command);
-      const computed = hookTrustHash(found.group, found.handler);
-      const recorded = readTrustHash(dir);
-      add("codex trust hash", recorded === computed, recorded ? `recorded ${recorded.slice(0, 20)}…` : "missing");
+    const userHooks = path.join(dir, "hooks.json");
+    const projectHooks = path.join(root, ".codex", "hooks.json");
+    const hooksFile = findRatchetHooks(projectHooks).length ? projectHooks : userHooks;
+    const found = findRatchetHooks(hooksFile);
+    const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "codex", "hook.mjs")}`;
+    for (const spec of CODEX_HOOK_EVENTS) {
+      const handlers = found.filter((hook) => hook.event === spec.event);
+      add(
+        `codex ${spec.event} hook`,
+        handlers.length === 1,
+        handlers.length ? hooksFile : `${handlers.length} handlers in ${hooksFile}`,
+      );
+      for (const hook of handlers) {
+        add(`codex ${spec.event} command exact`, hook.handler.command === expected, hook.handler.command);
+        const computed = hookTrustHash(hook.group, hook.handler, spec.event);
+        const recorded = readTrustHash(dir, hook.key);
+        add(
+          `codex ${spec.event} trust hash`,
+          recorded === computed,
+          recorded ? `recorded ${recorded.slice(0, 20)}…` : "missing",
+        );
+      }
     }
-    const noop = adapterNoops(path.join(repoRoot, "adapters", "codex", "hook.mjs"), {
-      tool_name: "apply_patch",
-      tool_input: { command: "*** Begin Patch\n*** Add File: x.txt\n+hi\n*** End Patch" },
-    });
-    add("codex adapter no-op", noop.ok, noop.detail || "silent outside a contract");
+    for (const payload of [
+      { hook_event_name: "UserPromptSubmit", prompt: "doctor" },
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "apply_patch",
+        tool_input: { command: "*** Begin Patch\n*** Add File: x.txt\n+hi\n*** End Patch" },
+      },
+      {
+        hook_event_name: "PostToolUse",
+        tool_name: "apply_patch",
+        tool_input: { command: "*** Begin Patch\n*** Add File: x.txt\n+hi\n*** End Patch" },
+        tool_response: { success: true },
+      },
+      { hook_event_name: "Stop" },
+    ]) {
+      const noop = adapterNoops(path.join(repoRoot, "adapters", "codex", "hook.mjs"), {
+        session_id: "doctor",
+        ...payload,
+      });
+      add(`codex ${payload.hook_event_name} no-op`, noop.ok, noop.detail || "silent outside a contract");
+    }
   }
 
   if (requested.includes("claude")) {
@@ -541,7 +571,7 @@ function commandDoctor(args) {
     .map((value) => value.trim())
     .filter(Boolean);
   if (requested.includes("all")) requested.push("codex", "claude");
-  if (requested.length) checks.push(...harnessChecks(path.join(import.meta.dirname, ".."), requested));
+  if (requested.length) checks.push(...harnessChecks(path.join(import.meta.dirname, ".."), requested, root));
   for (const c of checks) out(`${c.ok ? "PASS" : c.hard ? "FAIL" : "WARN"}  ${c.name}  ${c.detail}`);
   process.exit(checks.some((c) => c.hard && !c.ok) ? 1 : 0);
 }

@@ -198,20 +198,20 @@ test("install: codex hook is merged, idempotent, and removable", () => {
   const hooksFile = path.join(dir, ".codex/hooks.json");
   fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
   fs.writeFileSync(hooksFile, JSON.stringify({ hooks: { PostToolUse: [] } }, null, 2));
+  const lifecycle = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"];
 
   assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const first = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
-  assert.equal(first.hooks.PostToolUse.length, 0);
-  assert.equal(first.hooks.PreToolUse.length, 1);
+  for (const event of lifecycle) assert.equal(first.hooks[event].length, 1, event);
   assert.match(first.hooks.PreToolUse[0].hooks[0].command, /adapters\/codex\/hook\.mjs/);
 
   assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const second = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
-  assert.equal(second.hooks.PreToolUse.length, 1);
+  for (const event of lifecycle) assert.equal(second.hooks[event].length, 1, event);
 
   assert.equal(ratchet(dir, ["uninstall", "--harness", "codex", "--project"], undefined, env).status, 0);
   const third = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
-  assert.equal(third.hooks.PreToolUse.length, 0);
+  for (const event of lifecycle) assert.equal(third.hooks[event].length, 0, event);
 });
 
 test("doctor: isolated codex and claude harnesses pass, bad trust fails", () => {

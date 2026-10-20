@@ -135,13 +135,25 @@ The installer detects the OpenCode major version and writes the v2 file (`ratche
 
 ### Codex
 
-Codex 0.163 ships a `PreToolUse` hook that covers `Bash`, `apply_patch`, MCP tools, and other local function tools. Hosted tools such as web search do not use the hook path. Hooks require a trust review, or `--dangerously-bypass-hook-trust` for automation.
+Codex 0.163 supports lifecycle hooks for `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop`. `PreToolUse` covers `Bash`, `apply_patch`, MCP tools, and other local function tools. Hosted tools such as web search do not use the hook path. Hooks require a trust review, or `--dangerously-bypass-hook-trust` for automation.
 
-`~/.codex/hooks.json`:
+`~/.codex/hooks.json` holds one Ratchet handler per event, each in its own group:
 
 ```json
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/node /path/to/ratchet/adapters/codex/hook.mjs",
+            "timeout": 30,
+            "statusMessage": "ratchet: injecting contract"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|apply_patch|Edit|Write",
@@ -154,16 +166,41 @@ Codex 0.163 ships a `PreToolUse` hook that covers `Bash`, `apply_patch`, MCP too
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/node /path/to/ratchet/adapters/codex/hook.mjs",
+            "timeout": 30,
+            "statusMessage": "ratchet: recording result"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/node /path/to/ratchet/adapters/codex/hook.mjs",
+            "timeout": 600,
+            "statusMessage": "ratchet: verifying"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
-`ratchet install --harness codex --user` writes this and then writes the trust hash Codex expects into `~/.codex/config.toml` under `[hooks.state."<hooks.json>:pre_tool_use:0:0"]`. The hash algorithm (verified on Codex 0.163) is reproduced in `lib/codex-trust.mjs`. If the hash does not match after a Codex upgrade, the hook stays untrusted rather than silently allowing writes; run `/hooks` in the TUI to trust it again, or `node adapters/codex/trust.mjs` to recompute.
+`ratchet install --harness codex --user` writes all four groups and one trust entry per handler in `~/.codex/config.toml`, under `[hooks.state."<hooks.json>:<event_name>:<group>:<handler>"]`. Event names are `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, and `stop`. The hash algorithm in `lib/codex-trust.mjs` is verified against Codex 0.163 for all four events. If a hash stops matching after an upgrade, the hook stays untrusted rather than silently allowing writes. Run `/hooks` in the TUI to trust it again, or `node adapters/codex/trust.mjs` to recompute.
 
-`ratchet doctor --harness codex` verifies the hook is present, the command is exact, the trust hash matches, and the adapter no-ops outside a contract.
+`ratchet doctor --harness codex` checks that all four hooks are present, each command is exact, every trust hash matches, and the adapter no-ops outside a contract.
 
-Codex delivers `Bash` and `apply_patch` as `tool_input.command`. The adapter maps that to Ratchet's `bash` and `write` events and returns Codex's deny JSON on a block.
+The adapter maps `Bash` to `bash` with `{command}`, `apply_patch` to `write` with `{patch}`, and `Edit`/`Write` to `write` with `{path}`. Prompt events need `.ratchet/config.json`; tool and stop events need `.ratchet/current`. Outside those, every event exits 0 with no output. The responses are `hookSpecificOutput.additionalContext` for prompts, the deny JSON below for `PreToolUse`, nothing for `PostToolUse`, and `{"decision":"block","reason":...}` for `Stop`.
 
 ```json
 {
