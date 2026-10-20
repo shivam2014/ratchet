@@ -37,7 +37,7 @@ npm run test:stress
 | Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated `CLAUDE_CONFIG_DIR` with only the Ratchet hook; `Write` allow and deny; check + done; OpenCode Go provider via `claude-go` |
 | pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension loaded; auto contract from the prompt; `write` allow and deny; check + done; OpenCode Go provider |
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny; check + done |
-| T3 Code | OpenCode provider plugin | OpenCode adapter test; provider loading not automated | Tool guard and post-write checks; no T3-native prompt/stop yet |
+| T3 Code Nightly | `ratchet install --harness t3` + live thread | PASS (live) | OpenCode provider plugin: allow inside, deny outside; post-write checks. No T3-native prompt/stop. |
 | Cursor | none | Not tested | Not installed on this machine; no adapter claimed |
 
 ### Isolation used
