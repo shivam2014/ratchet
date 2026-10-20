@@ -390,3 +390,4 @@ The important metric is not "how often did the model follow the skill?" It is "h
 | 2026-10-20 | No regex-only routing; cascade with abstention and evaluation | Natural language has an open-ended long tail; see [routing.md](routing.md) |
 | 2026-10-20 | Check surface is hashed and canaried | A model that can weaken the check can defeat the gate |
 | 2026-10-20 | ACP proxy is the broadest universal adapter; native hooks for depth | No finalized hook standard; ACP's draft proxy RFD explicitly aims to subsume hooks |
+| 2026-10-20 | ACP is a breadth adapter, not the first build | Proxy RFD draft; current harnesses have direct hooks/control planes |

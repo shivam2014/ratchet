@@ -176,6 +176,15 @@ So ACP is the best **single universal adapter**, but it is not a replacement for
 
 This is the honest ranking. ACP is the broadest single bet, but it is a draft proxy RFD on top of a stable protocol. Native hooks are the deepest but narrowest. The core should support both.
 
+### Why ACP is not the first build
+
+- The proxy RFD is draft, and editors do not universally expose “install a proxy.” The two-ended wrapper works today, but it is still a wrapper.
+- Not every harness routes through ACP. Codex, Claude, and pi have direct hooks; T3 is a harness with its own lifecycle and MCP control plane.
+- ACP permission and tool reporting are optional. Native hooks are stronger for guaranteed pre-tool blocking and system-level prompt injection.
+- ACP is a breadth adapter. Add it when the core and native adapters are stable, or when a target editor/agent only speaks ACP.
+
+For now, the priority is: core + native adapters for the harnesses you actually use; T3 native/MCP; then ACP as the breadth path.
+
 
 ## Does a model need to drive Ratchet?
 
@@ -320,8 +329,8 @@ Fetched 2026-10-20. The web search backend returned no results, so these were re
 ## Decision
 
 - Ratchet's portable core is a **CLI + normalized event protocol**, not a pi extension.
-- Build the **ACP proxy** as the broadest universal adapter: `ratchet acp -- <agent>`. Spike it with one agent (Claude or Codex via ACP) before generalizing.
-- Keep **native hooks** for direct harnesses where depth matters: Codex, Claude, Cursor, pi; OpenCode where the v2 API permits.
+- Build the **core and native adapters first**: Codex, Claude, pi, and the T3-native/MCP path. Those are the current harnesses and the strongest enforcement.
+- Add the **ACP proxy** as the breadth adapter after the core is stable: `ratchet acp -- <agent>`. The RFD is draft; do not make it the foundation.
 - Use the **T3 control-plane supervisor** for T3 native providers; ACP covers T3's ACP agents.
 - Tier 4 wrapper and tier 5 gateway for the rest; tier 6 model tools are advisory only.
 - No model in the pass/fail path. A model may drive the outer supervisor, never the certification.
