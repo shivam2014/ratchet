@@ -8,8 +8,8 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 |---|---|---|
 | Glob matching | `test/glob.test.mjs` | `**`, `*`, `?`, literal brackets, deny patterns |
 | Shell classification | `test/classify.test.mjs` | reads, redirects, `rm`, `sed -i`, `cp`, `git add`, `git -C`, `git commit`, `git diff`, `apply_patch` heredoc, `git apply` heredoc, inline interpreters, hard denies, package managers |
-| Decision policy | `test/decide.test.mjs` | allow/deny, scope, deny list, read-only, read without contract, write without path, budgets, bash hard deny, bash redirect, unresolved bash |
-| Contract state | `test/contract.test.mjs` | check detection, contract defaults, path normalization, version rejection |
+| Decision policy | `test/decide.test.mjs` | allow/deny, scope, deny list, case-folded deny, symlink escape, read-only, read without contract, write without path, budgets, bash hard deny, bash redirect, unresolved bash |
+| Contract state | `test/contract.test.mjs` | check detection, contract defaults, path normalization, real paths, version rejection, session resolution |
 | Rule table | `test/rules.test.mjs` | valid rows, prose warnings, missing enforcer/proof, unknown layer, malformed rows |
 | AGENTS.md sync | `test/agents-md.test.mjs` | append, replace, idempotent, drift check |
 | Check runner | `test/checks.test.mjs` | pass, fail, timeout, empty |
@@ -17,10 +17,16 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 178 tests, all passing.
+Total: 187 tests, all passing.
 
 ```bash
 npm test
+```
+
+The CLI stress matrix runs the real binary through 25 edge cases, each in its own process. It stays outside `npm test` for speed.
+
+```bash
+npm run test:stress
 ```
 
 ## Harness end-to-end
@@ -57,6 +63,9 @@ Each was fixed at the source and has a test or a documented proof.
 | OpenCode v2 `ctx.directory` is undefined | OpenCode probe | Use `ctx.location.directory` |
 | Claude hooks used `ratchet` from PATH | Claude e2e | Installer writes the absolute `node ratchet.mjs guard` command |
 | Claude sent the Go key as a bearer token | Claude smoke test | Use `ANTHROPIC_API_KEY` (x-api-key), not `ANTHROPIC_AUTH_TOKEN` |
+| `.env` deny did not match `.ENV` on a case-insensitive filesystem | Stress matrix | Match deny entries case-insensitively; keep scope exact |
+| A symlink inside the scope wrote outside it | Stress matrix | Resolve real paths before the scope check |
+| Two sessions shared the global current contract | Stress matrix and route test | Resolve the contract by session, then fall back to a manual contract |
 
 ## Still manual or untested
 

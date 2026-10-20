@@ -8,10 +8,11 @@ Tests follow the pstack rules: one observable behavior per test, no assertions o
 |---|---|---|
 | Pure policy | `test/glob.test.mjs`, `test/classify.test.mjs` | Path matching and shell classification |
 | Decision | `test/decide.test.mjs` | Allow/deny, budgets, read-only, fail-closed paths |
-| State | `test/contract.test.mjs`, `test/agents-md.test.mjs`, `test/rules.test.mjs` | Contract loading, check detection, rule table |
+| State | `test/contract.test.mjs`, `test/agents-md.test.mjs`, `test/rules.test.mjs` | Contract loading, check detection, rule table, session resolution |
 | End to end | `test/e2e.test.mjs` | CLI init, contract, guard, check, done, install, disable |
+| CLI stress | `test/stress.mjs` | Malformed events, scope, traversal, deny lists, budgets, stop, tamper, symlinks, sessions |
 
-178 tests. Run them with:
+187 tests. Run them with:
 
 ```bash
 npm test
