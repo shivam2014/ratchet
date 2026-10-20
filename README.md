@@ -67,7 +67,7 @@ ratchet status
 
 | Harness | What `install` writes | In-loop strength |
 |---|---|---|
-| pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `tool_call` hook |
+| pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, and `agent_end` hooks |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
 | OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
 | T3 Code | T3 harness lifecycle; ACP proxy; OpenCode plugin where applicable | partial: native T3 adapter still to build |
@@ -82,11 +82,11 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 |---|---|---|---|
 | Codex 0.163 | `npm run test:codex` | PASS | Native and Bash-heredoc `apply_patch`; OpenCode Go via `codex-go` |
 | Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated config with one hook; `Write` allow and deny; OpenCode Go via `claude-go` |
-| pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension; `write` allow and deny |
+| pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension; auto contract from the prompt; `write` allow and deny; stop gate |
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny |
 | Cursor | none | Not tested | Not installed; no adapter claimed |
 
-`npm test` runs 170 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+`npm test` runs 175 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
 
 Ratchet can enforce the actual pstack skills: install them as Agent Skills, then start a task with `--pstack` to gate source writes behind the `/poteto-mode` plan and the `/architect` sketch. See [docs/pstack.md](docs/pstack.md).
 

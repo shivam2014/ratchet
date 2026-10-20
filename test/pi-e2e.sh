@@ -35,7 +35,13 @@ if (fs.existsSync("outside.txt")) process.exit(1);
 JS
 
 node "$ROOT/bin/ratchet.mjs" init >/dev/null
-node "$ROOT/bin/ratchet.mjs" task start --role coder --goal "pi e2e" --scope "src/**" --verify "node check.mjs" >/dev/null
+node -e '
+const fs = require("fs");
+const file = ".ratchet/config.json";
+const config = JSON.parse(fs.readFileSync(file, "utf8"));
+config.auto.scope = ["src/**"];
+fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+'
 
 pi -p --no-session --no-extensions --extension "$ROOT/adapters/pi/ratchet.ts" \
   --no-skills --no-context-files --no-mcp \
@@ -46,6 +52,29 @@ pi -p --no-session --no-extensions --extension "$ROOT/adapters/pi/ratchet.ts" \
 fail=0
 if [ -f outside.txt ]; then echo "FAIL: outside.txt exists"; fail=1; else echo "PASS: outside.txt absent"; fi
 if [ ! -f src/inside.txt ]; then echo "FAIL: src/inside.txt missing"; fail=1; else echo "PASS: src/inside.txt present"; fi
+
+CONTRACT=".ratchet/runs/$(cat .ratchet/current)/contract.json"
+EVENTS=".ratchet/runs/$(cat .ratchet/current)/events.jsonl"
+if node -e '
+const fs = require("fs");
+const contract = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.exit(contract.auto === true && contract.harness === "pi" && contract.session_id ? 0 : 1);
+' "$CONTRACT"; then
+  echo "PASS: prompt created an auto contract for pi"
+else
+  echo "FAIL: no auto contract for pi"
+  fail=1
+fi
+if node -e '
+const fs = require("fs");
+const rows = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+process.exit(rows.some((row) => row.type === "prompt.submit") && rows.some((row) => row.type === "turn.stop") ? 0 : 1);
+' "$EVENTS"; then
+  echo "PASS: prompt.submit and turn.stop reached the trail"
+else
+  echo "FAIL: lifecycle rows missing from the trail"
+  fail=1
+fi
 
 node "$ROOT/bin/ratchet.mjs" report | tee ratchet-report.txt
 if grep -q "^DENY" ratchet-report.txt; then echo "PASS: a deny is recorded"; else echo "FAIL: no deny recorded"; fail=1; fi

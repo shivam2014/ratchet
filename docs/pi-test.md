@@ -18,28 +18,35 @@ The active key comes from `opencode auth export` (the `opencode-go` record with 
 
 ## Adapter
 
-```ts
-pi.on("tool_call", async (event, ctx) => {
-  const result = spawnSync("ratchet", ["guard"], { input: JSON.stringify(payload), encoding: "utf8", cwd });
-  if (result.status === 2) return { block: true, reason: result.stderr.trim() };
-});
-```
+The adapter maps four pi lifecycle events onto `ratchet hook` and translates the decision back. Prompt events need `.ratchet/config.json`; the rest need an active contract.
 
-The block returns as a failed tool result; the subagent continues.
+| pi event | `ratchet hook` type | Translation |
+|---|---|---|
+| `before_agent_start` | `prompt.submit` | Append `decision.context` to the system prompt |
+| `tool_call` | `tool.before` | Return `{ block: true, reason }` on deny |
+| `tool_result` | `tool.after` | Send a visible `ratchet` custom message when `decision.context` exists |
+| `agent_end` | `turn.stop` | Send a `followUp` message when `decision.allow === false` |
+
+The block returns as a failed tool result; the subagent continues. A post-check failure or a blocked stop reaches the model as a `ratchet` custom message with `triggerTurn: true`.
 
 ## Result
 
-`npm run test:pi`:
+`npm run test:pi` creates the contract from the prompt, so the run covers the auto route and the stop gate:
 
 ```text
 PASS: outside.txt absent
 PASS: src/inside.txt present
+PASS: prompt created an auto contract for pi
+PASS: prompt.submit and turn.stop reached the trail
 ALLOW write  src/inside.txt
 DENY  write  outside.txt  — outside.txt is outside scope [src/**]
+ALLOW stop   -
 PASS: a deny is recorded
 PASS: check
 PASS: done
 ```
+
+`test/pi-adapter.test.mjs` covers the same lifecycle without a provider call. It imports the extension and drives the handlers with a fake `ExtensionAPI`.
 
 ## Limits
 

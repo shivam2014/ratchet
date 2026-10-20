@@ -67,15 +67,16 @@ and exits 0 or 2. The adapter turns exit 2 into the harness's block primitive.
 
 ### pi
 
-```ts
-pi.on("tool_call", async (event, ctx) => {
-  const result = spawnSync("ratchet", ["guard"], {
-    input: JSON.stringify({ harness: "pi", tool: event.toolName, input: event.input, cwd: ctx.cwd }),
-    encoding: "utf8",
-  });
-  if (result.status === 2) return { block: true, reason: result.stderr.trim() };
-});
-```
+The extension maps `before_agent_start`, `tool_call`, `tool_result`, and `agent_end` onto `ratchet hook`. Prompt events need `.ratchet/config.json`; the rest need an active `.ratchet/current`.
+
+| pi event | `ratchet hook` type |
+|---|---|
+| `before_agent_start` | `prompt.submit` |
+| `tool_call` | `tool.before` |
+| `tool_result` | `tool.after` |
+| `agent_end` | `turn.stop` |
+
+`tool_call` returns `{ block: true, reason }` on deny. `tool_result` and `agent_end` failures reach the model through `pi.sendMessage` with `customType: "ratchet"` and `triggerTurn: true`.
 
 If the pi orchestrator extension is loaded, do not add this as a second independent handler. Call the same `decide()` from inside the orchestrator's existing `tool_call` handler. Two guards with two contracts is how drift starts.
 
