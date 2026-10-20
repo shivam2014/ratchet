@@ -63,6 +63,24 @@ test("decide: deny list wins over scope", (t) => {
   assert.match(decision.reason, /denied/);
 });
 
+test("decide: deny list matches case variants", (t) => {
+  const root = emptyRepo(t);
+  const contract = createContract(root, {
+    goal: "case",
+    role: "coder",
+    scope: ["**"],
+    deny: [".env", ".git/**"],
+  });
+  saveContract(root, contract);
+
+  for (const target of [".ENV", ".Git/config"]) {
+    const decision = decide(root, event("write", { path: target }));
+    assert.equal(decision.allow, false, target);
+    assert.match(decision.reason, /denied/, target);
+  }
+  assert.equal(decide(root, event("write", { path: "src/a.ts" })).allow, true);
+});
+
 test("decide: read-only contract blocks writes", (t) => {
   const { root } = repo(t, { readOnly: true });
   const decision = decide(root, event("write", { path: "src/a.ts" }));
