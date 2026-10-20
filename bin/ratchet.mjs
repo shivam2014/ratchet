@@ -41,6 +41,7 @@ import { syncAgents } from "../lib/agents-md.mjs";
 import {
   ORDER,
   LABEL,
+  CLAUDE_HOOK_EVENTS,
   detectHarnesses,
   installHarness,
   uninstallHarness,
@@ -487,20 +488,28 @@ function harnessChecks(repoRoot, requested) {
     const dir = process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude");
     const settingsFile = path.join(dir, "settings.json");
     const settings = readJson(settingsFile, null);
-    const handler = (settings?.hooks?.PreToolUse ?? [])
-      .flatMap((entry) => entry?.hooks ?? [])
-      .find((h) => typeof h?.command === "string" && h.command.includes("ratchet"));
-    add("claude hook present", Boolean(handler), settingsFile);
-    if (handler) {
-      const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "claude", "hook.mjs")}`;
-      add("claude command exact", handler.command === expected, handler.command);
+    const expected = `${process.execPath} ${path.join(repoRoot, "adapters", "claude", "hook.mjs")}`;
+    for (const spec of CLAUDE_HOOK_EVENTS) {
+      const list = Array.isArray(settings?.hooks?.[spec.event]) ? settings.hooks[spec.event] : [];
+      const handler = list
+        .filter((entry) => Array.isArray(entry?.hooks))
+        .flatMap((entry) => entry.hooks)
+        .find((h) => typeof h?.command === "string" && h.command.includes("ratchet"));
+      add(`claude ${spec.event} hook`, Boolean(handler), settingsFile);
+      if (handler) add(`claude ${spec.event} command exact`, handler.command === expected, handler.command);
     }
-    const noop = adapterNoops(path.join(repoRoot, "adapters", "claude", "hook.mjs"), {
-      hook_event_name: "PreToolUse",
-      tool_name: "Write",
-      tool_input: { file_path: "x.txt" },
-    });
-    add("claude adapter no-op", noop.ok, noop.detail || "silent outside a contract");
+    for (const event of [
+      { hook_event_name: "UserPromptSubmit", prompt: "doctor" },
+      { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "x.txt" } },
+      { hook_event_name: "PostToolUse", tool_name: "Write", tool_input: { file_path: "x.txt" }, tool_response: {} },
+      { hook_event_name: "Stop" },
+    ]) {
+      const noop = adapterNoops(path.join(repoRoot, "adapters", "claude", "hook.mjs"), {
+        session_id: "doctor",
+        ...event,
+      });
+      add(`claude ${event.hook_event_name} no-op`, noop.ok, noop.detail || "silent outside a contract");
+    }
   }
 
   return checks;

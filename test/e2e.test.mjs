@@ -171,15 +171,23 @@ test("install: claude hook is idempotent and preserves settings", () => {
   const claude = path.join(dir, ".claude/settings.json");
   fs.mkdirSync(path.dirname(claude), { recursive: true });
   fs.writeFileSync(claude, JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }, null, 2));
+  const lifecycle = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"];
 
   assert.equal(ratchet(dir, ["install", "--harness", "claude", "--project", "--yes"]).status, 0);
   const first = JSON.parse(fs.readFileSync(claude, "utf8"));
   assert.deepEqual(first.permissions, { allow: ["Bash(ls)"] });
   assert.equal(first.hooks.PreToolUse.length, 1);
+  for (const event of lifecycle) assert.equal(first.hooks[event].length, 1, event);
 
   assert.equal(ratchet(dir, ["install", "--harness", "claude", "--project", "--yes"]).status, 0);
   const second = JSON.parse(fs.readFileSync(claude, "utf8"));
   assert.equal(second.hooks.PreToolUse.length, 1);
+  for (const event of lifecycle) assert.equal(second.hooks[event].length, 1, event);
+
+  assert.equal(ratchet(dir, ["uninstall", "--harness", "claude", "--project"]).status, 0);
+  const third = JSON.parse(fs.readFileSync(claude, "utf8"));
+  assert.deepEqual(third.permissions, { allow: ["Bash(ls)"] });
+  for (const event of lifecycle) assert.equal(third.hooks[event].length, 0, event);
 });
 
 test("install: codex hook is merged, idempotent, and removable", () => {
