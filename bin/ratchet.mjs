@@ -35,6 +35,7 @@ import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
 import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
+import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
 import {
@@ -336,8 +337,12 @@ function commandHook() {
   const root = findRoot(event.cwd);
   let decision;
   if (event.type === "prompt.submit") {
-    const contract = loadRun(root);
-    decision = { context: contract ? briefText(root, contract) : null };
+    const routed = routePrompt(root, event);
+    decision = {
+      context: routed.contract ? briefText(root, routed.contract) : null,
+      run: routed.contract?.id ?? null,
+      created: routed.created,
+    };
     appendEvent(root, event, decision);
   } else if (event.type === "tool.before") {
     decision = guardFor(root, event);
