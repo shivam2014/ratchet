@@ -793,12 +793,35 @@ function commandSync(args) {
   }
 }
 
+function oneLine(text, max = 160) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  return flat.length > max ? `${flat.slice(0, max - 3).trimEnd()}...` : flat;
+}
+
 function briefText(root, contract) {
   const state = loadState(root, contract.id);
-  return [
+  const lines = [
     `## Task contract ${contract.id}`,
     `Goal: ${contract.goal}`,
     `Role: ${contract.role}${contract.readOnly ? " (read-only)" : ""}`,
+  ];
+  if (contract.profile) {
+    lines.push(`Profile: ${contract.profile}`);
+    const skills = Array.isArray(contract.skills) ? contract.skills : [];
+    if (!skills.length) {
+      lines.push("Likely skills: none");
+    } else {
+      lines.push("Likely skills:");
+      for (const skill of skills) {
+        const where = skill.path || "(not installed)";
+        const description = oneLine(skill.description);
+        lines.push(`- ${skill.name}  ${where}${description ? `  ${description}` : ""}`);
+      }
+      lines.push("Read these skill files before coding. If none apply, say so.");
+    }
+  }
+  lines.push(
     `Write scope: ${contract.scope.join(", ") || "(none)"}`,
     `Denied: ${contract.deny.join(", ") || "(none)"}`,
     `Budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`,
@@ -809,7 +832,8 @@ function briefText(root, contract) {
     "- `ratchet done` refuses without a passing `ratchet check`.",
     "",
     "If a write is blocked, finish within scope or start a new contract with a wider scope.",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function commandPrompt(args) {
@@ -826,6 +850,8 @@ function commandPrompt(args) {
     budgets: contract.budgets,
     used: { files: state.files.size, writes: state.writes },
     verify: contract.verify.map((v) => v.cmd),
+    ...(contract.profile ? { profile: contract.profile } : {}),
+    ...(Array.isArray(contract.skills) && contract.skills.length ? { skills: contract.skills } : {}),
   };
   if (args.has("json")) {
     out(JSON.stringify(brief, null, 2));

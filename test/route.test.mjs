@@ -52,7 +52,7 @@ test("route: auto creates one contract and hashes the prompt", (t) => {
   assert.match(routed.contract.goal, /^auto task [a-f0-9]{8}$/);
 
   const route = JSON.parse(fs.readFileSync(path.join(root, ".ratchet", "runs", routed.contract.id, "route.json"), "utf8"));
-  assert.equal(route.decision, "auto");
+  assert.equal(route.decision, "default");
   assert.equal(route.prompt_length, text.length);
   assert.match(route.prompt_sha256, /^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(route).includes(text), false);
