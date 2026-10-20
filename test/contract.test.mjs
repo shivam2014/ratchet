@@ -53,7 +53,7 @@ test("normaliseTarget: absolute inside the repo", (t) => {
 
 test("normaliseTarget: absolute outside the repo stays absolute", (t) => {
   const root = temp(t);
-  assert.equal(normaliseTarget(root, root, "/etc/passwd"), "/etc/passwd");
+  assert.equal(normaliseTarget(root, root, "/etc/passwd"), fs.realpathSync("/etc/passwd"));
 });
 
 test("createContract: defaults and verify ids", (t) => {

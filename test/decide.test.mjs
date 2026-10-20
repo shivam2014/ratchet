@@ -81,6 +81,28 @@ test("decide: deny list matches case variants", (t) => {
   assert.equal(decide(root, event("write", { path: "src/a.ts" })).allow, true);
 });
 
+test("decide: a symlink cannot escape the scope", (t) => {
+  const { root } = repo(t);
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-outside-"));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.symlinkSync(outside, path.join(root, "src", "out"));
+
+  const decision = decide(root, event("write", { path: "src/out/leak.txt" }));
+  assert.equal(decision.allow, false);
+  assert.match(decision.reason, /outside scope/);
+});
+
+test("decide: a symlink inside the scope still works", (t) => {
+  const { root } = repo(t);
+  fs.mkdirSync(path.join(root, "src", "real"), { recursive: true });
+  fs.symlinkSync(path.join(root, "src", "real"), path.join(root, "src", "link"));
+
+  const decision = decide(root, event("write", { path: "src/link/a.ts" }));
+  assert.equal(decision.allow, true);
+  assert.deepEqual(decision.paths, ["src/real/a.ts"]);
+});
+
 test("decide: read-only contract blocks writes", (t) => {
   const { root } = repo(t, { readOnly: true });
   const decision = decide(root, event("write", { path: "src/a.ts" }));
