@@ -136,6 +136,50 @@ test("stop: blocks accumulate and the loop caps without running checks", (t) => 
   assert.equal(after.ranAt, before.ranAt);
 });
 
+test("stop: a new prompt starts a fresh attempt loop", (t) => {
+  const { root } = repo(t, { verify: [FAIL] });
+  const event = stopEvent();
+
+  for (let attempt = 1; attempt <= DEFAULT_MAX_ATTEMPTS; attempt++) {
+    appendEvent(root, event, evaluateStop(root, event));
+  }
+  const capped = evaluateStop(root, event);
+  assert.equal(capped.allow, true);
+  assert.match(capped.reason, /capped/);
+  appendEvent(root, event, capped);
+
+  const repeat = evaluateStop(root, event);
+  assert.equal(repeat.allow, true);
+  assert.match(repeat.reason, /capped/);
+
+  appendEvent(root, parseEvent({ type: "prompt.submit", harness: "test", session_id: "s-1", prompt: "try again" }), {
+    context: null,
+  });
+
+  const fresh = evaluateStop(root, event);
+  assert.equal(fresh.allow, false);
+  assert.equal(fresh.attempts, 1);
+  assert.match(fresh.reason, /checks failed/);
+});
+
+test("stop: a certified stop ends the loop", (t) => {
+  const { root, contract } = repo(t, { verify: [FAIL] });
+  const event = stopEvent();
+
+  appendEvent(root, event, evaluateStop(root, event));
+  assert.equal(stopBlocks(root, contract.id), 1);
+
+  appendEvent(root, event, {
+    allow: true,
+    certified: true,
+    attempts: 1,
+    maxAttempts: DEFAULT_MAX_ATTEMPTS,
+    evidence: null,
+    checks: null,
+  });
+  assert.equal(stopBlocks(root, contract.id), 0);
+});
+
 test("stop: the maxAttempts option caps after one block", (t) => {
   const { root, contract } = repo(t, { verify: [FAIL] });
   const event = stopEvent();
