@@ -119,3 +119,31 @@ test("opencode adapter: no-ops outside a contract", { skip: skipped }, async (t)
   assert.equal(adapter.before({ tool: "write", input: { path: "x.txt" } }), undefined);
   assert.equal(adapter.after({ tool: "write", input: { path: "x.txt" }, result: { ok: true } }), undefined);
 });
+
+test("opencode adapter: disable allows writes until enable", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  const adapter = await harness(dir);
+
+  assert.throws(() => adapter.before({ tool: "write", input: { path: "outside.txt" } }), /outside scope/);
+  assert.equal(ratchet(dir, ["disable", "--reason", "adapter test"]).status, 0);
+  assert.match(ratchet(dir, ["status"]).stdout, /DISABLED/);
+  assert.equal(adapter.before({ tool: "write", input: { path: "outside.txt" } }), undefined);
+  assert.equal(ratchet(dir, ["enable"]).status, 0);
+  assert.throws(() => adapter.before({ tool: "write", input: { path: "outside.txt" } }), /outside scope/);
+});
+
+test("opencode adapter: a broken ratchet binary fails closed", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  const adapter = await harness(dir);
+  const previous = process.env.RATCHET_BIN;
+  process.env.RATCHET_BIN = "/nonexistent/ratchet";
+  try {
+    assert.throws(() => adapter.before({ tool: "write", input: { path: "src/a.ts" } }), /cannot run/);
+  } finally {
+    process.env.RATCHET_BIN = previous;
+  }
+});

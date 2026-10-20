@@ -99,6 +99,8 @@ r = hook(T2, { type: "turn.stop", harness: "t", session_id: "s" });
 check("no contract: stop uncertified allow", r.code === 0 && r.json.allow === true && r.json.certified === false, `code=${r.code}`);
 r = hook(T2, { type: "prompt.submit", harness: "t", session_id: "s", prompt: "hi" });
 check("no contract: prompt context null", r.code === 0 && r.json.context === null, `code=${r.code}`);
+r = run(T2, ["done"]);
+check("done without a contract refuses", r.status === 1 && /No active task contract/.test(r.stderr), `code=${r.status}`);
 
 r = before("write", { path: "src/a.ts" });
 check("in-scope write allowed", r.code === 0 && r.json.allow === true, `code=${r.code}`);
@@ -112,6 +114,16 @@ r = before("bash", { command: "rm -rf /" });
 check("bash hard deny", r.code === 2 && /hard rule/.test(r.json.reason ?? ""), `code=${r.code}`);
 r = before("bash", { command: "npm install" });
 check("unresolved bash allowed and marked", r.code === 0 && r.json.allow === true, `code=${r.code}`);
+
+run(T, ["task", "start", "--role", "reviewer", "--goal", "read only", "--scope", "src/**", "--verify", "node check.mjs"]);
+r = before("write", { path: "src/ro.ts" });
+check("read-only contract blocks writes", r.code === 2 && /read-only/.test(r.json.reason ?? ""), `code=${r.code}`);
+
+run(T, ["task", "start", "--role", "coder", "--goal", "gate", "--scope", "src/**", "--pstack", "--verify", "node check.mjs"]);
+r = before("write", { path: "src/gate.ts" });
+check("skill gate blocks source", r.code === 2 && /Skill gate/.test(r.json.reason ?? ""), `code=${r.code}`);
+r = before("write", { path: ".ratchet/plan.md" });
+check("gate artifact stays writable", r.code === 0, `code=${r.code}`);
 
 run(T, ["task", "start", "--role", "coder", "--goal", "deny", "--scope", "**", "--verify", "node check.mjs"]);
 r = before("write", { path: ".env" });
@@ -149,6 +161,8 @@ r = stop();
 check("check surface tamper blocks", r.code === 2 && /check surface changed/.test(r.json.reason ?? ""), `code=${r.code}`);
 
 run(T, ["disable", "--reason", "stress"]);
+r = run(T, ["status"]);
+check("status reports disabled", r.status === 0 && /DISABLED/.test(r.stdout), `code=${r.status}`);
 r = before("write", { path: ".env" });
 check("kill switch allows with reason", r.code === 0 && /disabled/.test(r.json.reason ?? ""), `code=${r.code}`);
 run(T, ["enable"]);
@@ -197,6 +211,14 @@ check(
   aOk.code === 0 && bOk.code === 0 && aBad.code === 2 && bBad.code === 2,
   `A=${aOk.code}/${aBad.code} B=${bOk.code}/${bBad.code}`,
 );
+
+const T3 = repo();
+run(T3, ["init"]);
+r = run(T3, ["install", "--harness", "t3", "--project", "--yes"]);
+const installed = fs.existsSync(path.join(T3, ".opencode/plugins/ratchet.js"));
+r = run(T3, ["uninstall", "--harness", "t3", "--project"]);
+const removed = !fs.existsSync(path.join(T3, ".opencode/plugins/ratchet.js"));
+check("t3 plugin installs and uninstalls", installed && removed, `installed=${installed} removed=${removed}`);
 
 const failures = rows.filter((row) => !row.ok);
 console.log(`\nsummary pass=${rows.length - failures.length} fail=${failures.length}`);
