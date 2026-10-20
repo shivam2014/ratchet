@@ -13,4 +13,5 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - run: npm run test:stress
       - run: node bin/ratchet.mjs audit
