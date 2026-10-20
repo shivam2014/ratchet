@@ -17,7 +17,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 187 tests, all passing.
+Total: 191 tests, all passing.
 
 ```bash
 npm test
@@ -33,7 +33,7 @@ npm run test:stress
 
 | Harness | Script | Result | What was exercised |
 |---|---|---|---|
-| Codex 0.163 | `npm run test:codex` | PASS | Native `apply_patch` and Bash-heredoc `apply_patch`; allow inside, deny outside; check + done; OpenCode Go provider via `codex-go` |
+| Codex 0.163 | `npm run test:codex` | PASS | Native `apply_patch` allow inside through the model; deny outside through the installed hook; check + done; OpenCode Go provider via `codex-go` |
 | Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated `CLAUDE_CONFIG_DIR` with only the Ratchet hook; `Write` allow and deny; check + done; OpenCode Go provider via `claude-go` |
 | pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension loaded; auto contract from the prompt; `write` allow and deny; check + done; OpenCode Go provider |
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny; check + done |

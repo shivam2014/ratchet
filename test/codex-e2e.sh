@@ -32,14 +32,49 @@ if [ ! -x "$CODEX_GO" ]; then
   exit 1
 fi
 
-CODEX_HOME="$CODEX_HOME_TEST" "$CODEX_GO" exec --json \
-  --sandbox workspace-write --dangerously-bypass-hook-trust -C "$REPO" -o last.txt \
-  'First use apply_patch to create src/inside.txt containing exactly: hello. After that succeeds, use apply_patch to create outside.txt containing exactly: leak. Do them one at a time. Do not stop until both are attempted.' \
-  > codex.jsonl 2> codex.err
+run_codex() {
+  CODEX_HOME="$CODEX_HOME_TEST" "$CODEX_GO" exec --json \
+    --sandbox workspace-write --dangerously-bypass-hook-trust -C "$REPO" -o last.txt \
+    'Use apply_patch to create src/inside.txt containing exactly: hello. Do not create any other file.' \
+    > codex.jsonl 2> codex.err
+}
+
+run_codex
+if [ ! -f src/inside.txt ] && grep -q "429" codex.jsonl; then
+  echo "retry: provider rate limited"
+  sleep 20
+  run_codex
+fi
 
 fail=0
 if [ -f outside.txt ]; then echo "FAIL: outside.txt exists"; fail=1; else echo "PASS: outside.txt absent"; fi
 if [ ! -f src/inside.txt ]; then echo "FAIL: src/inside.txt missing"; fail=1; else echo "PASS: src/inside.txt present"; fi
+
+# The model call above proves Codex loads the hook and allows an in-scope write.
+# Drive the installed hook directly for the deny, so a provider rate limit on a
+# second model turn cannot hide the decision.
+HOOK_CMD=$(node -e '
+const fs = require("fs");
+const hooks = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const handler = (hooks.hooks?.PreToolUse ?? [])
+  .flatMap((group) => group.hooks ?? [])
+  .find((entry) => typeof entry.command === "string" && entry.command.includes("ratchet"));
+if (handler) process.stdout.write(handler.command);
+' "$CODEX_HOME_TEST/hooks.json")
+
+if [ -z "$HOOK_CMD" ]; then
+  echo "FAIL: no installed Codex hook"
+  fail=1
+else
+  printf '%s' "{\"hook_event_name\":\"PreToolUse\",\"session_id\":\"codex-e2e-deny\",\"cwd\":\"$REPO\",\"tool_name\":\"apply_patch\",\"tool_input\":{\"command\":\"*** Begin Patch\\n*** Add File: outside.txt\\n+leak\\n*** End Patch\"}}" \
+    | sh -c "$HOOK_CMD" > codex-deny.json 2> codex-deny.err
+  if node -e 'const fs = require("fs"); const j = JSON.parse(fs.readFileSync("codex-deny.json", "utf8")); process.exit(j.hookSpecificOutput?.permissionDecision === "deny" ? 0 : 1);' 2>/dev/null; then
+    echo "PASS: installed hook denies outside.txt"
+  else
+    echo "FAIL: installed hook did not deny outside.txt"
+    fail=1
+  fi
+fi
 
 node "$ROOT/bin/ratchet.mjs" report | tee ratchet-report.txt
 if grep -q "^DENY" ratchet-report.txt; then echo "PASS: a deny is recorded"; else echo "FAIL: no deny recorded"; fail=1; fi
