@@ -6,6 +6,7 @@
       "cmd": "npm run test"
     }
   ],
+  "post": [],
   "defaults": {
     "maxFiles": 12,
     "maxWrites": 60,

@@ -11,7 +11,7 @@ Tests follow the pstack rules: one observable behavior per test, no assertions o
 | State | `test/contract.test.mjs`, `test/agents-md.test.mjs`, `test/rules.test.mjs` | Contract loading, check detection, rule table |
 | End to end | `test/e2e.test.mjs` | CLI init, contract, guard, check, done, install, disable |
 
-153 tests. Run them with:
+162 tests. Run them with:
 
 ```bash
 npm test

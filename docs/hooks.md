@@ -51,6 +51,18 @@ The adapter sends one JSON object on stdin:
 
 and exits 0 or 2. The adapter turns exit 2 into the harness's block primitive.
 
+## Post checks
+
+`post` in `.ratchet/config.json` holds fast commands that run after a write or bash tool event:
+
+```json
+{
+  "post": [{ "id": "lint", "cmd": "npx eslint {files}" }]
+}
+```
+
+`{files}` expands to shell-quoted, repo-relative code files the event touched. A command without `{files}` runs once per event. Failures come back as `hookSpecificOutput.additionalContext` on `PostToolUse`, so the agent sees the error on its next turn. They never block the tool call or the turn. The full verify still runs at `Stop`.
+
 ## Per-harness wiring
 
 ### pi
@@ -200,7 +212,7 @@ Codex 0.163 supports lifecycle hooks for `UserPromptSubmit`, `PreToolUse`, `Post
 
 `ratchet doctor --harness codex` checks that all four hooks are present, each command is exact, every trust hash matches, and the adapter no-ops outside a contract.
 
-The adapter maps `Bash` to `bash` with `{command}`, `apply_patch` to `write` with `{patch}`, and `Edit`/`Write` to `write` with `{path}`. Prompt events need `.ratchet/config.json`; tool and stop events need `.ratchet/current`. Outside those, every event exits 0 with no output. The responses are `hookSpecificOutput.additionalContext` for prompts, the deny JSON below for `PreToolUse`, nothing for `PostToolUse`, and `{"decision":"block","reason":...}` for `Stop`.
+The adapter maps `Bash` to `bash` with `{command}`, `apply_patch` to `write` with `{patch}`, and `Edit`/`Write` to `write` with `{path}`. Prompt events need `.ratchet/config.json`; tool and stop events need `.ratchet/current`. Outside those, every event exits 0 with no output. The responses are `hookSpecificOutput.additionalContext` for prompts, the deny JSON below for `PreToolUse`, `hookSpecificOutput.additionalContext` for failing post checks, and `{"decision":"block","reason":...}` for `Stop`.
 
 ```json
 {

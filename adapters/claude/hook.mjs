@@ -103,8 +103,14 @@ const RESPONSES = {
       },
     };
   },
-  PostToolUse() {
-    return null;
+  PostToolUse(decision) {
+    if (typeof decision?.context !== "string" || !decision.context.trim()) return null;
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        additionalContext: decision.context,
+      },
+    };
   },
   Stop(decision) {
     if (decision?.allow !== false) return null;

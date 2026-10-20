@@ -35,6 +35,7 @@ import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
 import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
+import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
@@ -353,8 +354,9 @@ function commandHook() {
     decision = guardFor(root, event);
     record(root, event, decision);
   } else if (event.type === "tool.after") {
-    decision = { continue: true, context: null };
-    appendEvent(root, event, decision);
+    appendEvent(root, event, { continue: true, context: null });
+    const post = runPostChecks(root, event, loadConfig(root));
+    decision = { continue: true, context: post.context };
   } else {
     decision = evaluateStop(root, event);
     appendEvent(root, event, decision);

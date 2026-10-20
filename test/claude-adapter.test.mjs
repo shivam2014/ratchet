@@ -156,6 +156,32 @@ test("claude adapter: PostToolUse records the result without blocking", (t) => {
   assert.equal(row.ok, true);
 });
 
+test("claude adapter: PostToolUse returns failing post-check context", (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir, "post task");
+  const configFile = path.join(dir, ".ratchet", "config.json");
+  const config = JSON.parse(fs.readFileSync(configFile, "utf8"));
+  config.post = [{ id: "lint", cmd: "node lint.mjs {files}" }];
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+  fs.writeFileSync(path.join(dir, "lint.mjs"), 'console.error("lint failed: " + process.argv.slice(2).join(" "));\nprocess.exit(1);\n');
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src", "a.ts"), "export const a = 1\n");
+
+  const result = claude(dir, {
+    hook_event_name: "PostToolUse",
+    tool_name: "Write",
+    tool_input: { file_path: "src/a.ts", content: "export const a = 1\n" },
+    tool_response: { filePath: "src/a.ts", success: true },
+    tool_use_id: "toolu_06",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.hookSpecificOutput.hookEventName, "PostToolUse");
+  assert.match(output.hookSpecificOutput.additionalContext, /post checks failed: lint/);
+  assert.match(output.hookSpecificOutput.additionalContext, /lint failed: src\/a\.ts/);
+});
+
 test("claude adapter: Stop blocks a failing verify and allows a passing one", (t) => {
   const dir = repo(t);
   assert.equal(ratchet(dir, ["init"]).status, 0);

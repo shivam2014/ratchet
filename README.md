@@ -86,7 +86,7 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny |
 | Cursor | none | Not tested | Not installed; no adapter claimed |
 
-`npm test` runs 153 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+`npm test` runs 162 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
 
 Ratchet can enforce the actual pstack skills: install them as Agent Skills, then start a task with `--pstack` to gate source writes behind the `/poteto-mode` plan and the `/architect` sketch. See [docs/pstack.md](docs/pstack.md).
 
