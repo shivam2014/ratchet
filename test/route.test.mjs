@@ -59,6 +59,25 @@ test("route: auto creates one contract and hashes the prompt", (t) => {
   assert.equal(fs.readFileSync(path.join(root, ".ratchet", "runs", routed.contract.id, "contract.json"), "utf8").includes(text), false);
 });
 
+test("route: the created contract locks the check surface", (t) => {
+  const root = repo(t);
+  saveConfig(root, {
+    ...defaultConfig(root),
+    checks: [{ id: "check", cmd: "node check.mjs" }],
+    auto: { enabled: true },
+  });
+  fs.writeFileSync(path.join(root, "check.mjs"), "process.exit(0)\n");
+
+  const routed = routePrompt(root, prompt(root));
+  const lock = routed.contract.checksLock;
+
+  assert.match(lock.config, /^[a-f0-9]{64}$/);
+  assert.match(lock.sha256, /^[a-f0-9]{64}$/);
+  assert.deepEqual(Object.keys(lock.files), ["check.mjs"]);
+  const saved = JSON.parse(fs.readFileSync(path.join(root, ".ratchet", "runs", routed.contract.id, "contract.json"), "utf8"));
+  assert.deepEqual(saved.checksLock, lock);
+});
+
 test("route: a second prompt reuses the active contract", (t) => {
   const root = repo(t);
   const first = routePrompt(root, prompt(root, "first", "s-1"));

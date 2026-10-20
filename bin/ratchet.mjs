@@ -35,6 +35,7 @@ import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
 import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
+import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
@@ -213,6 +214,7 @@ function commandTask(args) {
     ...(config.checks ?? []).map((c) => c.cmd),
     ...(args.has("bend") ? [`${process.env.BEND_BIN || "bend"} PROOF.bend --check-only`] : []),
   ];
+  const verify = args.all("verify").length ? args.all("verify") : defaultVerify;
   const contract = createContract(root, {
     goal,
     role,
@@ -222,7 +224,8 @@ function commandTask(args) {
     gates,
     maxFiles: Number(args.one("max-files", config.defaults?.maxFiles ?? 12)),
     maxWrites: Number(args.one("max-writes", config.defaults?.maxWrites ?? 60)),
-    verify: args.all("verify").length ? args.all("verify") : defaultVerify,
+    verify,
+    checkSurface: lockCheckSurface(root, verify),
   });
   saveContract(root, contract);
   out(`run:     ${contract.id}`);
@@ -368,6 +371,10 @@ function commandCheck(args) {
   const root = findRoot(process.cwd());
   const config = requireConfig(root);
   const contract = loadRun(root);
+  if (contract?.checksLock) {
+    const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
+    if (changes.length) fail(`check surface changed: ${changes.join(", ")}. Start a new contract before checking.`);
+  }
   const checks = contract?.verify.length ? contract.verify : config.checks ?? [];
   if (!checks.length) fail("No checks configured. Add them to .ratchet/config.json or pass --verify at task start.");
   const report = runChecks(root, checks, { timeoutMs: Number(args.one("timeout", 120000)) });
@@ -399,6 +406,10 @@ function gitFacts(root) {
 function commandDone() {
   const root = findRoot(process.cwd());
   const contract = requireContract(root);
+  if (contract.checksLock) {
+    const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
+    if (changes.length) fail(`REFUSED: check surface changed: ${changes.join(", ")}. Start a new contract before done.`);
+  }
   const checks = readJson(checksPath(root, contract.id), null);
   if (!checks) fail("REFUSED: no check evidence. Run: ratchet check");
   if (!checks.ok) fail("REFUSED: the last check run failed. Fix it, then run: ratchet check");

@@ -115,6 +115,50 @@ test("e2e: budget stops runaway edits", () => {
   assert.match(second.stderr, /budget/i);
 });
 
+test("e2e: check surface change refuses check and done", () => {
+  const dir = session();
+  fs.writeFileSync(path.join(dir, "check.mjs"), "process.exit(0)\n");
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "lock the checks",
+    "--scope", "src/**",
+    "--verify", "node check.mjs",
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+  assert.equal(ratchet(dir, ["done"]).status, 0);
+
+  fs.writeFileSync(path.join(dir, "check.mjs"), "process.exit(0) // weakened\n");
+  const check = ratchet(dir, ["check"]);
+  assert.equal(check.status, 1);
+  assert.match(check.stderr, /check surface changed/);
+
+  const done = ratchet(dir, ["done"]);
+  assert.equal(done.status, 1);
+  assert.match(done.stderr, /REFUSED: check surface changed/);
+});
+
+test("e2e: a generated proof file does not invalidate the check surface", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "generated proof",
+    "--scope", "src/**",
+    "--verify", "node check.mjs",
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  // The lock has no check.mjs yet. The generated file appears later, which is
+  // allowed because an addition cannot weaken a check that was already locked.
+  fs.writeFileSync(path.join(dir, "check.mjs"), "process.exit(0)\n");
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+});
+
 test("e2e: audit rejects a rule with no mechanism", () => {
   const dir = session();
   ratchet(dir, ["init"]);
@@ -329,6 +373,44 @@ test("install: dry run writes nothing", () => {
   assert.match(result.stdout, /dry run/);
   assert.equal(fs.existsSync(path.join(dir, ".opencode/plugins/ratchet.js")), false);
   assert.equal(fs.existsSync(path.join(dir, ".ratchet/install.json")), false);
+});
+
+test("e2e: task start locks the check surface and Stop blocks after the check changes", () => {
+  const dir = session();
+  ratchet(dir, ["init"]);
+  fs.writeFileSync(path.join(dir, "check.mjs"), "process.exit(0)\n");
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "lock the check",
+    "--scope", "src/**",
+    "--verify", "node check.mjs",
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
+  const contract = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "contract.json"), "utf8"));
+  assert.deepEqual(Object.keys(contract.checksLock.files), ["check.mjs"]);
+  assert.match(contract.checksLock.sha256, /^[a-f0-9]{64}$/);
+
+  const stop = (extra = {}) => ratchet(dir, ["hook"], JSON.stringify({ type: "turn.stop", harness: "test", session_id: "s-1", cwd: dir, ...extra }));
+
+  const first = stop();
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(JSON.parse(first.stdout).certified, true);
+  const evidence = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "checks.json"), "utf8"));
+
+  fs.writeFileSync(path.join(dir, "check.mjs"), "// weakened\nprocess.exit(0)\n");
+  const blocked = stop();
+  const decision = JSON.parse(blocked.stdout);
+
+  assert.equal(blocked.status, 2, blocked.stderr);
+  assert.equal(decision.allow, false);
+  assert.equal(decision.checksLock, "changed");
+  assert.equal(decision.evidence, null);
+  assert.equal(decision.checks, null);
+  assert.match(decision.reason, /^check surface changed: changed check file: check\.mjs$/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "checks.json"), "utf8")).ranAt, evidence.ranAt);
 });
 
 test("e2e: ratchet hook drives the normalized lifecycle", () => {
