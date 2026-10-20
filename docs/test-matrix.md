@@ -17,7 +17,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 175 tests, all passing.
+Total: 178 tests, all passing.
 
 ```bash
 npm test
@@ -31,7 +31,7 @@ npm test
 | Claude Code 2.1.258 | `npm run test:claude` | PASS | Isolated `CLAUDE_CONFIG_DIR` with only the Ratchet hook; `Write` allow and deny; check + done; OpenCode Go provider via `claude-go` |
 | pi 1.3.0 | `npm run test:pi` | PASS | Only the Ratchet extension loaded; auto contract from the prompt; `write` allow and deny; check + done; OpenCode Go provider |
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny; check + done |
-| T3 Code | none | Not separately automated | T3 is its own harness; native adapter and ACP proxy planned; old OpenCode path historical |
+| T3 Code | OpenCode provider plugin | OpenCode adapter test; provider loading not automated | Tool guard and post-write checks; no T3-native prompt/stop yet |
 | Cursor | none | Not tested | Not installed on this machine; no adapter claimed |
 
 ### Isolation used

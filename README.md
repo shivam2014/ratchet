@@ -70,7 +70,7 @@ ratchet status
 | pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, and `agent_end` hooks |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
 | OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
-| T3 Code | T3 harness lifecycle; ACP proxy; OpenCode plugin where applicable | partial: native T3 adapter still to build |
+| T3 Code | OpenCode provider plugin: tool guard + post-write checks; git/CI stop | partial: no T3-native prompt/stop yet |
 | Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 
@@ -86,7 +86,7 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 | OpenCode 2.0.32 | `npm run test:opencode` | PASS | v2 plugin API; `write` allow and deny |
 | Cursor | none | Not tested | Not installed; no adapter claimed |
 
-`npm test` runs 175 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
+`npm test` runs 178 deterministic unit and CLI tests. The harness scripts need network and an active OpenCode Go credential.
 
 Ratchet can enforce the actual pstack skills: install them as Agent Skills, then start a task with `--pstack` to gate source writes behind the `/poteto-mode` plan and the `/architect` sketch. See [docs/pstack.md](docs/pstack.md).
 
@@ -175,4 +175,4 @@ Make that job a required check in branch protection. That is the layer the model
 
 ## Design notes
 
-See [docs/vision.md](docs/vision.md) for the product vision: prompt → route → contract → guard → stop gate → CI. See [docs/routing.md](docs/routing.md) for the routing research, the cascade design, and the evaluation plan. See [docs/pi-gap.md](docs/pi-gap.md) for what the pi orchestrator already implements and what Ratchet must add. See [docs/universal-integration.md](docs/universal-integration.md) for the normalized lifecycle protocol, the ACP proxy path, and the adapter ladder across Codex, Claude, Cursor, OpenCode, pi, and T3. See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/test-matrix.md](docs/test-matrix.md) for the feature-to-test map. Per-harness records: [Codex](docs/codex-test.md), [Claude](docs/claude-test.md), [pi](docs/pi-test.md), [OpenCode](docs/opencode-test.md). See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.
+See [docs/vision.md](docs/vision.md) for the product vision: prompt → route → contract → guard → stop gate → CI. See [docs/routing.md](docs/routing.md) for the routing research, the cascade design, and the evaluation plan. See [docs/pi-gap.md](docs/pi-gap.md) for what the pi orchestrator already implements and what Ratchet must add. See [docs/universal-integration.md](docs/universal-integration.md) for the normalized lifecycle protocol, the ACP proxy path, and the adapter ladder across Codex, Claude, Cursor, OpenCode, pi, and T3. See [docs/t3.md](docs/t3.md) for the T3 Code provider-level integration and its limits. See [docs/design.md](docs/design.md) for the pstack analysis, the enforcement pyramid, the pi orchestrator extraction plan, and the harness matrix. See [docs/test-matrix.md](docs/test-matrix.md) for the feature-to-test map. Per-harness records: [Codex](docs/codex-test.md), [Claude](docs/claude-test.md), [pi](docs/pi-test.md), [OpenCode](docs/opencode-test.md). See [docs/hooks.md](docs/hooks.md) for the adapter contract and its limits.

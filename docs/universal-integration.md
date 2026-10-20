@@ -277,6 +277,8 @@ A native T3 provider adapter could expose pre-tool events, but that is a T3 chan
 
 T3 also supports **ACP providers**, including local ACP commands. That gives a second, simpler integration: register `ratchet acp -- <agent>` as a Local ACP command in T3, and the ACP proxy wraps that agent with the contract. Use ACP where the provider is ACP; use the MCP controller where T3 is running a native provider (Codex, Claude, Cursor, OpenCode).
 
+The current T3 thread runs the OpenCode provider, so Ratchet installs at that provider layer: the OpenCode plugin guards tools and runs post-write checks. That is the supported T3 integration today. A T3-native prompt/stop adapter or MCP controller is still future work. See [t3.md](t3.md).
+
 Because T3 is itself a harness, there is a third path: a **native T3 adapter** against its own lifecycle/events, if those are exposed. That is the deepest integration and should be preferred for T3's own agent loop. The three paths are:
 
 1. **T3-native lifecycle** — prompt/tool/turn events from T3's own harness; deepest.
