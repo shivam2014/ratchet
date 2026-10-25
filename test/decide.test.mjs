@@ -155,6 +155,26 @@ test("decide: unresolved bash mutation is allowed and marked", (t) => {
   assert.equal(decision.unresolved, true);
 });
 
+test("decide: inline interpreter writes are denied", (t) => {
+  const { root } = repo(t);
+  for (const command of [
+    'python3 -c "import shutil; shutil.rmtree(\'src\')"',
+    'node -e "require(\'fs\').writeFileSync(\'../outside.txt\', \'x\')"',
+    'ruby -e "File.write(\'x\', \'y\')"',
+    'perl -e "unlink q(x)"',
+  ]) {
+    const decision = decide(root, event("bash", { command }));
+    assert.equal(decision.allow, false, command);
+    assert.match(decision.reason, /Inline interpreter code/, command);
+  }
+});
+
+test("decide: a script file inside the scope still runs", (t) => {
+  const { root } = repo(t);
+  const decision = decide(root, event("bash", { command: "python3 tools/build.py" }));
+  assert.equal(decision.allow, true);
+});
+
 test("decide: skill gate denies source writes until the artifact exists", (t) => {
   const root = emptyRepo(t);
   const contract = createContract(root, {
