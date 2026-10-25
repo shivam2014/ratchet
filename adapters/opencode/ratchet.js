@@ -64,11 +64,6 @@ function runHook(payload, cwd) {
   return { error: null, decision, status: result.status, stderr: (result.stderr || "").trim() };
 }
 
-function reasonOf(result) {
-  if (result.decision?.reason) return result.decision.reason;
-  return result.stderr.replace(/^\[ratchet\]\s*/, "") || "blocked by ratchet";
-}
-
 export default {
   id: "ratchet",
   setup: async (ctx) => {
@@ -96,8 +91,13 @@ export default {
       };
       const result = runHook(payload, directory);
       if (result.error) throw new Error(`[ratchet] ${result.error}`);
-      if (result.decision?.allow === false || result.status === 2) {
-        throw new Error(`[ratchet] ${reasonOf(result)}`);
+      // Fail closed. Only an exit-0 response that explicitly allows the call
+      // opens the door; a crash (exit 1), a deny (exit 2), or unparseable
+      // output blocks.
+      if (result.status !== 0 || result.decision?.allow !== true) {
+        const detail = result.decision?.reason ?? result.stderr.replace(/^\[ratchet\]\s*/, "");
+        const reason = detail || (result.status === 0 ? "guard returned no decision" : `guard exited ${result.status} without a decision`);
+        throw new Error(`[ratchet] ${reason}`);
       }
     });
 

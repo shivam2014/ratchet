@@ -147,3 +147,21 @@ test("opencode adapter: a broken ratchet binary fails closed", { skip: skipped }
     process.env.RATCHET_BIN = previous;
   }
 });
+
+test("opencode adapter: a crashing ratchet binary fails closed", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  const adapter = await harness(dir);
+  const previous = process.env.RATCHET_BIN;
+  const crash = path.join(path.dirname(previous), "ratchet-crash");
+  fs.writeFileSync(crash, "#!/bin/sh\nexit 1\n");
+  fs.chmodSync(crash, 0o755);
+  process.env.RATCHET_BIN = crash;
+  try {
+    assert.throws(() => adapter.before({ tool: "write", input: { path: "src/a.ts" } }), /guard exited 1|without a decision/);
+  } finally {
+    process.env.RATCHET_BIN = previous;
+    fs.rmSync(crash, { force: true });
+  }
+});
