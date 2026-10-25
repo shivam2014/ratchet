@@ -19,12 +19,14 @@ import {
 } from "../lib/fsx.mjs";
 import {
   checksPath,
+  clearCurrent,
   configPath,
   createContract,
   currentId,
   defaultConfig,
   detectChecks,
   eventsPath,
+  latestRun,
   loadConfig,
   loadRun,
   runDir,
@@ -445,10 +447,12 @@ function commandDone() {
 
   const result = resultFor(root, contract, checks, { verdict: "done" });
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
+  clearCurrent(root, contract.id);
   out(`DONE  ${contract.id}`);
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
   out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
   out(`changed: ${result.git.changed ?? "?"} file(s)`);
+  out("released: no active contract. Start the next task with ratchet task start.");
 }
 
 function contractForRun(root, args, command) {
@@ -962,7 +966,9 @@ function commandPrompt(args) {
 
 function commandReport(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  // After done the pointer is released, so fall back to the newest run.
+  const contract = loadRun(root) ?? latestRun(root);
+  if (!contract) fail("No run found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
   const events = readJsonl(eventsPath(root, contract.id));
   const checks = readJson(checksPath(root, contract.id), null);
   const summary = {

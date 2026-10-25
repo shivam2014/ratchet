@@ -57,14 +57,15 @@ test("e2e: contract allows in-scope, blocks out-of-scope, records evidence", () 
   const read = ratchet(dir, ["guard"], event("read", { path: "lib/a.ts" }, dir));
   assert.equal(read.status, 0);
 
+  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
   const check = ratchet(dir, ["check"]);
   assert.equal(check.status, 0, check.stderr);
 
   const done = ratchet(dir, ["done"]);
   assert.equal(done.status, 0, done.stderr);
   assert.match(done.stdout, /DONE/);
+  assert.equal(fs.existsSync(path.join(dir, ".ratchet", "current")), false);
 
-  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
   const result = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "result.json"), "utf8"));
   assert.equal(result.verdict, "done");
   assert.equal(result.counts.files, 1);
@@ -129,7 +130,6 @@ test("e2e: check surface change refuses check and done", () => {
   assert.equal(start.status, 0, start.stderr);
 
   assert.equal(ratchet(dir, ["check"]).status, 0);
-  assert.equal(ratchet(dir, ["done"]).status, 0);
 
   fs.writeFileSync(path.join(dir, "check.mjs"), "process.exit(0) // weakened\n");
   const check = ratchet(dir, ["check"]);
