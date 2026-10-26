@@ -12,7 +12,7 @@ Tests follow the pstack rules: one observable behavior per test, no assertions o
 | End to end | `test/e2e.test.mjs` | CLI init, contract, guard, check, done, install, disable |
 | CLI stress | `test/stress.mjs` | Malformed events, scope, traversal, deny lists, budgets, stop, tamper, symlinks, sessions |
 
-234 tests. Run them with:
+235 tests. Run them with:
 
 ```bash
 npm test

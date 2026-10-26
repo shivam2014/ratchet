@@ -146,7 +146,7 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 
 ## Evidence
 
-- **234 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **235 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

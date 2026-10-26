@@ -33,6 +33,6 @@
     <text x="724" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#7BE0A3">✓ verify-1</text>
     <text x="1116" y="284" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#7BE0A3">pass</text>
 
-    <text x="1136" y="334" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6F7680">234 TESTS · CI GREEN</text>
+    <text x="1136" y="334" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6F7680">235 TESTS · CI GREEN</text>
   </g>
 </svg>
