@@ -1,12 +1,14 @@
 # Ratchet
 
-**A contract and verification gate for coding agents.**
-
-The agent does not decide when the work is done. A written contract defines the boundary, a machine check produces the evidence, and `ratchet done` refuses to close without it.
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Ratchet: the agent does not decide when the work is done. A terminal shows an allowed write, a denied write and a passing check, with adapters for pi, Claude Code, OpenCode, T3 Code and Codex.">
+</p>
 
 [![ci](https://github.com/shivam2014/ratchet/actions/workflows/ci.yml/badge.svg)](https://github.com/shivam2014/ratchet/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node 20+](https://img.shields.io/badge/node-20%2B-brightgreen.svg)](package.json)
+
+Ratchet is a harness-neutral contract and verification gate for coding agents. It runs as a small Node CLI with no model, no API key and no network call.
 
 ## See it work
 
@@ -56,15 +58,9 @@ A missing, malformed, or stale contract fails closed: writes are denied until a 
 
 ## How it works
 
-```text
-                 .ratchet/runs/<id>/contract.json
-                    /                        \
-        in-loop adapter                  out-of-loop gate
-   (pi / Claude / OpenCode)            (git hook / CI / branch protection)
-             |                                  |
-        fast feedback                     authoritative
-        teaches in one turn               cannot be talked around
-```
+<p align="center">
+  <img src="./assets/readme/flow.svg" width="100%" alt="How Ratchet runs: the contract feeds an in-loop guard that allows or denies tool calls, and an out-of-loop check that produces evidence for done and CI.">
+</p>
 
 Ratchet participates at three points only:
 
@@ -79,26 +75,6 @@ The adapter is deliberately thin. It normalises one tool call to JSON, calls `ra
 ```
 
 `ratchet guard` returns `{"allow":true|false,"reason":"...","paths":[...]}` and exits 0 or 2. `--format claude` emits the `PreToolUse` JSON shape.
-
-## Harnesses
-
-```bash
-ratchet install --harness pi,claude,opencode,t3,codex --project --yes
-ratchet status
-```
-
-| Harness | What `install` writes | In-loop strength |
-|---|---|---|
-| pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, `agent_end` hooks |
-| Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
-| OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
-| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet |
-| Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
-| Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
-
-Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`.
-
-`--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
 
 ## Install
 
@@ -127,6 +103,26 @@ ratchet done
 ```
 
 `ratchet done` releases the contract. A new task starts with a new contract.
+
+## Harnesses
+
+```bash
+ratchet install --harness pi,claude,opencode,t3,codex --project --yes
+ratchet status
+```
+
+| Harness | What `install` writes | In-loop strength |
+|---|---|---|
+| pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, `agent_end` hooks |
+| Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
+| OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
+| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet |
+| Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
+| Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
+
+Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`.
+
+`--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
 
 ## Commands
 
@@ -159,7 +155,7 @@ ratchet done
 
 ## Design principles
 
-- **No model backend.** Ratchet is a Node CLI with no model, no API key, and no network call. It does not generate replies and does not treat the model's prose as evidence.
+- **No model backend.** The CLI does not generate replies and does not treat the model's prose as evidence.
 - **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope.
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
 - **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.

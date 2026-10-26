@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Ratchet: a contract and verification gate for coding agents</title>
+  <desc id="hero-desc">Ratchet wordmark with the line "The agent does not decide when the work is done", a terminal showing an allowed write, a denied write and a passing check, and the five supported harnesses.</desc>
+  <defs>
+    <clipPath id="hero-clip"><rect width="1200" height="360" rx="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#hero-clip)">
+    <rect width="1200" height="360" fill="#0A0B0D"/>
+    <rect x="0.75" y="0.75" width="1198.5" height="358.5" rx="23.25" fill="none" stroke="#1E2126" stroke-width="1.5"/>
+
+    <text x="64" y="64" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" letter-spacing="2.2" fill="#7BE0A3">CONTRACT + VERIFICATION GATE</text>
+    <text x="62" y="146" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="72" font-weight="700" letter-spacing="-1.6" fill="#F4F1EA">Ratchet</text>
+    <text x="64" y="196" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="27" font-weight="500" fill="#F4F1EA">The agent does not decide</text>
+    <text x="64" y="230" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="27" font-weight="500" fill="#F4F1EA">when the work is done.</text>
+    <text x="64" y="274" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#9AA0A8">A written contract defines the boundary.</text>
+    <text x="64" y="300" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#9AA0A8">A machine check produces the evidence.</text>
+    <text x="64" y="334" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" letter-spacing="0.4" fill="#6F7680">ADAPTERS  pi · Claude Code · OpenCode · T3 Code · Codex</text>
+
+    <rect x="704" y="64" width="432" height="232" rx="14" fill="#101216" stroke="#24272D" stroke-width="1.5"/>
+    <line x1="704" y1="98" x2="1136" y2="98" stroke="#24272D" stroke-width="1.5"/>
+    <circle cx="724" cy="81" r="4.5" fill="#3A3F46"/>
+    <circle cx="740" cy="81" r="4.5" fill="#3A3F46"/>
+    <circle cx="756" cy="81" r="4.5" fill="#3A3F46"/>
+    <text x="780" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#6F7680">ratchet</text>
+
+    <text x="724" y="130" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#F4F1EA">$ ratchet guard</text>
+    <text x="724" y="164" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#7BE0A3">✓ src/hello.txt</text>
+    <text x="1116" y="164" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#6F7680">allow</text>
+    <text x="724" y="196" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#FF7A6B">✕ lib/leak.txt</text>
+    <text x="1116" y="196" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#FF7A6B">deny</text>
+    <text x="724" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#9AA0A8">outside scope [src/**]</text>
+    <text x="724" y="252" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#F4F1EA">$ ratchet done</text>
+    <text x="724" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#7BE0A3">✓ verify-1</text>
+    <text x="1116" y="284" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#7BE0A3">pass</text>
+
+    <text x="1136" y="334" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#6F7680">234 TESTS · CI GREEN</text>
+  </g>
+</svg>
