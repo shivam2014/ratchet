@@ -3,6 +3,15 @@
   "version": "0.2.0",
   "type": "module",
   "description": "Harness-neutral contract and verification gate for coding agents.",
+  "author": "Shivam Bhalla",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shivam2014/ratchet.git"
+  },
+  "homepage": "https://github.com/shivam2014/ratchet#readme",
+  "bugs": {
+    "url": "https://github.com/shivam2014/ratchet/issues"
+  },
   "bin": {
     "ratchet": "./bin/ratchet.mjs"
   },

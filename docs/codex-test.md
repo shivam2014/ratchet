@@ -38,7 +38,7 @@ No plugins, no `notify`, no inline `[[hooks.*]]`, no project `.codex` layer. The
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/shivam94/.hermes/node/bin/node /Users/shivam94/ratchet/adapters/codex/hook.mjs",
+            "command": "/usr/local/bin/node /repo/adapters/codex/hook.mjs",
             "timeout": 30,
             "statusMessage": "ratchet: checking contract"
           }

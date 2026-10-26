@@ -12,7 +12,7 @@ import {
   readTrustHash,
 } from "../lib/codex-trust.mjs";
 
-const command = "/Users/shivam94/.hermes/node/bin/node /Users/shivam94/ratchet/adapters/codex/hook.mjs";
+const command = "/usr/local/bin/node /repo/adapters/codex/hook.mjs";
 
 const groups = {
   UserPromptSubmit: {
@@ -41,7 +41,7 @@ function hooksFile(dir) {
 test("codex trust hash matches Codex 0.163 for pre_tool_use", () => {
   assert.equal(
     hookTrustHash(groups.PreToolUse, groups.PreToolUse.hooks[0], "PreToolUse"),
-    "sha256:e0600d2f17883566bd6b84f9add4943dd2306dbdab5a8bb69a84d8be9e729b93",
+    "sha256:4a637e26e2daf00512ba833eeecc7e084d080b054a04a8ababa4891b69d3f318",
   );
 });
 

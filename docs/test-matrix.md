@@ -17,7 +17,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 193 tests, all passing.
+Total: 234 tests, all passing.
 
 ```bash
 npm test
