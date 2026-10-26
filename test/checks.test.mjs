@@ -32,6 +32,15 @@ test("checks: timeout is a failure", (t) => {
   assert.notEqual(report.results[0].status, 0);
 });
 
+test("checks: failure context keeps the failing test block", (t) => {
+  const root = temp(t);
+  const cmd = `node -e 'console.log("not ok 1 - example"); console.log("  error: boom"); process.exit(1)'`;
+  const report = runChecks(root, [{ id: "fail", cmd }], { timeoutMs: 10000 });
+  assert.equal(report.ok, false);
+  assert.match(report.results[0].failure, /not ok 1 - example/);
+  assert.match(report.results[0].failure, /error: boom/);
+});
+
 test("checks: no checks is not a pass", () => {
   const report = runChecks(process.cwd(), []);
   assert.equal(report.ok, false);

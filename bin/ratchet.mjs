@@ -391,7 +391,11 @@ function commandCheck(args) {
   for (const r of report.results) {
     out(`${r.status === 0 ? "PASS" : "FAIL"}  ${r.id}  (${(r.durationMs / 1000).toFixed(1)}s)`);
     if (r.status !== 0) {
-      if (r.stdout) out(r.stdout.split("\n").slice(-20).join("\n"));
+      if (r.failure) {
+        out(r.failure);
+      } else if (r.stdout) {
+        out(r.stdout.split("\n").slice(-20).join("\n"));
+      }
       if (r.stderr) out(r.stderr.split("\n").slice(-20).join("\n"));
     }
   }
