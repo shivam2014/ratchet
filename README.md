@@ -104,6 +104,14 @@ ratchet done
 
 `ratchet done` releases the contract. A new task starts with a new contract.
 
+Tests written inside a task change the check surface, so `check` and `done` refuse until you accept the change on the record:
+
+```bash
+ratchet amend --reason "added assertions for the retry path"
+```
+
+The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract and records the old one as abandoned.
+
 ## Harnesses
 
 ```bash
@@ -133,20 +141,22 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend` |
+| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract and marks it abandoned |
 | `ratchet task status` | Show scope, budgets, and check state |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, save evidence |
 | `ratchet report` | Show the allow/deny trail for the current run; `--json` for machine output |
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
+| `ratchet amend` | Re-baseline the locked check surface for the live contract; `--reason` is required and recorded |
+| `ratchet abandon` | Close the live contract with verdict `abandoned`; `--reason` is required and recorded |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
 | `ratchet doctor` | Check the install; `--harness codex,claude` verifies hooks, trust, and no-op behaviour |
 | `ratchet sync` | Write the managed `AGENTS.md` block; `--install` adds the OpenCode and git hooks |
 
 ## Evidence
 
-- **235 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **240 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

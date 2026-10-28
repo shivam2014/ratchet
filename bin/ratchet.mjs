@@ -30,6 +30,7 @@ import {
   loadConfig,
   loadRun,
   runDir,
+  runFinished,
   saveConfig,
   saveContract,
 } from "../lib/contract.mjs";
@@ -181,6 +182,29 @@ function commandTask(args) {
   }
 
   if (sub !== "start") fail("usage: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+
+  // One contract at a time. Starting a second one used to overwrite the active
+  // pointer and strand the first run with no result, which looks finished in
+  // status but carries no evidence. --force closes it on the record instead.
+  const live = loadRun(root);
+  if (live && !runFinished(root, live.id)) {
+    if (!args.has("force")) {
+      fail(
+        [
+          `a contract is still live: ${live.id}`,
+          "finish it with: ratchet done",
+          'or close it with: ratchet abandon --reason "..."',
+          "or replace it with: ratchet task start --force ... (records the old one as abandoned)",
+        ].join("\n"),
+      );
+    }
+    const abandoned = resultFor(root, live, null, {
+      verdict: "abandoned",
+      reason: "superseded by a new contract (task start --force)",
+    });
+    writeJson(path.join(runDir(root, live.id), "result.json"), abandoned);
+    out(`superseded: ${live.id} (abandoned)`);
+  }
 
   const goal = String(args.one("goal", args.positional.slice(1).join(" ")) || "").trim();
   if (!goal) fail("task start needs --goal \"...\"");
@@ -381,7 +405,7 @@ function commandCheck(args) {
   const contract = loadRun(root);
   if (contract?.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
-    if (changes.length) fail(`check surface changed: ${changes.join(", ")}. Start a new contract before checking.`);
+    if (changes.length) fail(`check surface changed: ${changes.join(", ")}. If the change is intended, run: ratchet amend --reason "..."`);
   }
   const checks = contract?.verify.length ? contract.verify : config.checks ?? [];
   if (!checks.length) fail("No checks configured. Add them to .ratchet/config.json or pass --verify at task start.");
@@ -425,6 +449,8 @@ function resultFor(root, contract, checks, extra = {}) {
     verdict: checks?.ok ? "done" : "failed",
     finishedAt: new Date().toISOString(),
     counts: { files: state.files.size, writes: state.writes },
+    observed: { events: readJsonl(eventsPath(root, contract.id)).length, writes: state.writes },
+    amendments: (contract.checkAmendments ?? []).map((a) => ({ at: a.at, reason: a.reason, changes: a.changes })),
     checks: checks
       ? {
           ok: checks.ok,
@@ -443,20 +469,84 @@ function commandDone() {
   const contract = requireContract(root);
   if (contract.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
-    if (changes.length) fail(`REFUSED: check surface changed: ${changes.join(", ")}. Start a new contract before done.`);
+    if (changes.length) {
+      fail(
+        `REFUSED: check surface changed: ${changes.join(", ")}. ` +
+          'If the change is intended (new tests, a stronger check), run: ratchet amend --reason "..."',
+      );
+    }
   }
   const checks = readJson(checksPath(root, contract.id), null);
   if (!checks) fail("REFUSED: no check evidence. Run: ratchet check");
   if (!checks.ok) fail("REFUSED: the last check run failed. Fix it, then run: ratchet check");
 
   const result = resultFor(root, contract, checks, { verdict: "done" });
+  const amendments = contract.checkAmendments ?? [];
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
   clearCurrent(root, contract.id);
   out(`DONE  ${contract.id}`);
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
   out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
+  if (amendments.length) out(`amended: ${amendments.map((a) => a.reason).join("; ")}`);
   out(`changed: ${result.git.changed ?? "?"} file(s)`);
+  if (!contract.readOnly && result.counts.writes === 0) {
+    out("WARN  the guard observed 0 writes. Scope was not enforced for this run; only the check surface was.");
+    out("      wire the harness: ratchet install --harness opencode --project");
+  }
   out("released: no active contract. Start the next task with ratchet task start.");
+}
+
+/**
+ * Re-baseline the locked check surface for the live contract, on the record.
+ * Tests written inside a task legitimately change the check files; refusing
+ * forever forces a second contract and strands the first. The amendment keeps
+ * the audit trail honest: what moved, why, and when.
+ */
+function commandAmend(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const reason = String(args.one("reason", "")).trim();
+  if (!reason) fail('amend needs --reason "..." so the audit trail records why the check surface moved');
+  if (!contract.checksLock) fail("this contract has no locked check surface to amend");
+
+  const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
+  if (!changes.length) {
+    out("no check surface change: nothing to amend");
+    return;
+  }
+
+  const amendment = {
+    at: new Date().toISOString(),
+    reason,
+    changes,
+    from: contract.checksLock.sha256 ?? null,
+  };
+  contract.checksLock = lockCheckSurface(root, contract.verify);
+  amendment.to = contract.checksLock.sha256 ?? null;
+  contract.checkAmendments = [...(contract.checkAmendments ?? []), amendment];
+  saveContract(root, contract);
+
+  out(`AMENDED  ${contract.id}`);
+  for (const change of changes) out(`  ${change}`);
+  out(`lock: ${contract.checkAmendments.length} amendment(s) recorded in the contract`);
+}
+
+/**
+ * Close a contract without claiming the work is done. Without this the only
+ * exits from a live contract are done or overwriting the pointer.
+ */
+function commandAbandon(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const reason = String(args.one("reason", "")).trim();
+  if (!reason) fail('abandon needs --reason "..." so the audit trail records why the contract was dropped');
+
+  const result = resultFor(root, contract, null, { verdict: "abandoned", reason });
+  writeJson(path.join(runDir(root, contract.id), "result.json"), result);
+  clearCurrent(root, contract.id);
+  out(`ABANDONED  ${contract.id}`);
+  out(`reason: ${reason}`);
+  out("released: no active contract.");
 }
 
 function contractForRun(root, args, command) {
@@ -1003,7 +1093,7 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack] [--bend]
+  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack] [--bend] [--force]
   ratchet task status
   ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt
@@ -1012,6 +1102,8 @@ usage:
   ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] -- <command...>
   ratchet check [--timeout 120000]
   ratchet done
+  ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
+  ratchet abandon --reason "..."              # close the live contract without claiming done
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
@@ -1065,6 +1157,12 @@ switch (cmd) {
     break;
   case "done":
     commandDone();
+    break;
+  case "amend":
+    commandAmend(args);
+    break;
+  case "abandon":
+    commandAbandon(args);
     break;
   case "audit":
     commandAudit(args);

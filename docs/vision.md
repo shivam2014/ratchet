@@ -95,7 +95,7 @@ If a harness has no blocking stop hook, the same check runs in `ratchet run`, th
 
 **No check, no certified done.** If the repository has no checks, `ratchet init` bootstraps from `package.json` or the project's test/lint/build commands. If there is still nothing to run, the contract can be created but `done` is marked `uncertified`; a human waiver is required. A green check is the only automatic certification; a waiver is explicit and recorded, not a pass.
 
-**The check surface is part of the contract.** The commands, scripts, and config that define the checks are hashed. If the model weakens a test script or edits a check to make it pass, the stop gate refuses: "check surface changed; start a new contract or get approval." Canary checks prove the check can actually fail.
+**The check surface is part of the contract.** The commands, scripts, and config that define the checks are hashed. If the model weakens a test script or edits a check to make it pass, the stop gate refuses: "check surface changed; amend the contract on the record or revert." `ratchet amend --reason "..."` re-baselines the lock with the old hash, the new hash, and the reason stored in the contract, so adding real tests inside a task is a recorded step rather than a bypass. Canary checks prove the check can actually fail.
 
 ## The architecture
 

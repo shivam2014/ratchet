@@ -417,7 +417,7 @@ test("e2e: ratchet hook drives the normalized lifecycle", () => {
   const dir = session();
   assert.equal(ratchet(dir, ["init"]).status, 0);
   const start = ratchet(dir, [
-    "task", "start",
+    "task", "start", "--force",
     "--role", "coder",
     "--goal", "hook failing",
     "--scope", "src/**",
@@ -446,7 +446,7 @@ test("e2e: ratchet hook drives the normalized lifecycle", () => {
   assert.equal(JSON.parse(after.stdout).continue, true);
 
   const fresh = ratchet(dir, [
-    "task", "start",
+    "task", "start", "--force",
     "--role", "coder",
     "--goal", "hook passing",
     "--scope", "src/**",

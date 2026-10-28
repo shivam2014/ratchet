@@ -53,7 +53,7 @@ function rows(dir) {
 }
 
 function start(dir, goal, verify = PASS) {
-  const result = ratchet(dir, ["task", "start", "--role", "coder", "--goal", goal, "--scope", "src/**", "--verify", verify]);
+  const result = ratchet(dir, ["task", "start", "--force", "--role", "coder", "--goal", goal, "--scope", "src/**", "--verify", verify]);
   assert.equal(result.status, 0, result.stderr);
 }
 
