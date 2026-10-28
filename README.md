@@ -49,7 +49,7 @@ The whole policy is a small JSON file, readable by any harness, script, or CI jo
 |---|---|
 | `scope` | Writable globs. A path that does not match is denied. |
 | `deny` | Always blocked, even inside scope. |
-| `budgets` | Caps on distinct files and writes. Crossing a cap denies. |
+| `budgets` | Caps on distinct files and writes. Crossing a cap denies. Scratch files (`tmp-*`, `*.tmp`, `scratch/`) and paths inferred from bash do not count. |
 | `verify` | Commands `ratchet check` runs. `ratchet done` refuses unless all exit 0. |
 | `role` | Capability profile: coder, reviewer, writer, or a repo-defined role. |
 | `goal` | Audit label. |
@@ -112,6 +112,8 @@ ratchet amend --reason "added assertions for the retry path"
 
 The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract and records the old one as abandoned.
 
+`ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
+
 ## Harnesses
 
 ```bash
@@ -151,14 +153,14 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet report` | Show the allow/deny trail for the current run; `--json` for machine output |
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
 | `ratchet amend` | Re-baseline the locked check surface for the live contract; `--reason` is required and recorded |
-| `ratchet abandon` | Close the live contract with verdict `abandoned`; `--reason` is required and recorded |
+| `ratchet abandon` | Close the live contract, or a stranded one with `--run <id>`; `--reason` is required and recorded |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
 | `ratchet doctor` | Check the install; `--harness codex,claude` verifies hooks, trust, and no-op behaviour |
 | `ratchet sync` | Write the managed `AGENTS.md` block; `--install` adds the OpenCode and git hooks |
 
 ## Evidence
 
-- **252 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **264 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
@@ -169,6 +171,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 - **No model backend.** The CLI does not generate replies and does not treat the model's prose as evidence.
 - **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope.
+- **Scope is audited, not inferred.** The guard reads explicit write paths and shell hints; `done` compares the working tree with git. A write the classifier missed still refuses the close. This is what keeps the gate stable as shells, interpreters, and tools change.
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
 - **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
 - **One rule table.** `ratchet audit` fails when a rule claims a machine layer but names no enforcer or no proof. A check that has never failed on a real past mistake is a guess.
@@ -179,7 +182,9 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 .ratchet/
   config.json
   rules.tsv                  rule -> layer -> enforcer -> proof
+  install.json               adapters installed from this repo
   current                    active run id
+  events.jsonl               decisions made with no live contract
   runs/<id>/
     contract.json
     events.jsonl             every allow/deny, append-only
@@ -191,9 +196,9 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, installers for five harnesses, a git pre-commit hook, and CI. Next: prompt routing and stop hooks, so the normal case does not need `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
 
-The current release is prompt-blind: the contract is created explicitly before the turn. The planned `ratchet route` reads the prompt locally to choose a contract profile and a skill shortlist; it still has no model, makes no network call, and stores a hash rather than the raw prompt by default. See [`docs/vision.md`](docs/vision.md).
+Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 
 ## What this is not
 
