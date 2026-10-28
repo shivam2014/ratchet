@@ -130,7 +130,7 @@ ratchet status
 
 Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`. `ratchet status` reports adapters found on disk even when this repo has no install manifest, and labels them `(detected)`.
 
-In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
+In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. Interpreter payloads — `python3 - <<EOF`, `node <<EOF`, `bun -e`, `sh -s`, `node -e`, `perl -e` — are denied even when the body names an in-scope path, because the guard cannot see the rest of it; put the code in a file and run that file. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
 
 `--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
 
@@ -158,7 +158,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **247 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **252 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
