@@ -73,7 +73,7 @@ process.on("exit", () => {
 
 const T = repo();
 run(T, ["init"]);
-run(T, ["task", "start", "--role", "coder", "--goal", "stress", "--scope", "src/**", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "stress", "--scope", "src/**", "--verify", "node check.mjs"]);
 
 function before(tool, input, session = "s1") {
   return hook(T, { type: "tool.before", harness: "stress", session_id: session, cwd: T, tool, input });
@@ -115,17 +115,17 @@ check("bash hard deny", r.code === 2 && /hard rule/.test(r.json.reason ?? ""), `
 r = before("bash", { command: "npm install" });
 check("unresolved bash allowed and marked", r.code === 0 && r.json.allow === true, `code=${r.code}`);
 
-run(T, ["task", "start", "--role", "reviewer", "--goal", "read only", "--scope", "src/**", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "reviewer", "--goal", "read only", "--scope", "src/**", "--verify", "node check.mjs"]);
 r = before("write", { path: "src/ro.ts" });
 check("read-only contract blocks writes", r.code === 2 && /read-only/.test(r.json.reason ?? ""), `code=${r.code}`);
 
-run(T, ["task", "start", "--role", "coder", "--goal", "gate", "--scope", "src/**", "--pstack", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "gate", "--scope", "src/**", "--pstack", "--verify", "node check.mjs"]);
 r = before("write", { path: "src/gate.ts" });
 check("skill gate blocks source", r.code === 2 && /Skill gate/.test(r.json.reason ?? ""), `code=${r.code}`);
 r = before("write", { path: ".ratchet/plan.md" });
 check("gate artifact stays writable", r.code === 0, `code=${r.code}`);
 
-run(T, ["task", "start", "--role", "coder", "--goal", "deny", "--scope", "**", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "deny", "--scope", "**", "--verify", "node check.mjs"]);
 r = before("write", { path: ".env" });
 check("denied path .env", r.code === 2, `code=${r.code}`);
 
@@ -139,13 +139,13 @@ if (caseAllowed) {
   check("case bypass does not reach .env", !landed, landed ? ".env overwritten via .ENV" : ".ENV is a separate file");
 }
 
-run(T, ["task", "start", "--role", "coder", "--goal", "budget", "--scope", "**", "--max-files", "1", "--max-writes", "2", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "budget", "--scope", "**", "--max-files", "1", "--max-writes", "2", "--verify", "node check.mjs"]);
 r = before("write", { path: "src/b.ts" });
 const budgetFirst = r.code === 0;
 r = before("write", { path: "src/c.ts" });
 check("file budget enforced", budgetFirst && r.code === 2 && /budget/i.test(r.json.reason ?? ""), `code=${r.code}`);
 
-run(T, ["task", "start", "--role", "coder", "--goal", "stop", "--scope", "**", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "stop", "--scope", "**", "--verify", "node check.mjs"]);
 const stop = () => hook(T, { type: "turn.stop", harness: "stress", session_id: "s1", cwd: T });
 r = stop();
 check("failing check blocks", r.code === 2 && r.json.allow === false && /checks failed/.test(r.json.reason ?? ""), `code=${r.code}`);
@@ -169,10 +169,11 @@ run(T, ["enable"]);
 r = before("write", { path: ".env" });
 check("kill switch off restores deny", r.code === 2, `code=${r.code}`);
 
-const outside = temp("ratchet-outside-");
+const outside = fs.mkdtempSync("/var/tmp/ratchet-outside-");
+dirs.push(outside);
 fs.mkdirSync(path.join(T, "src"), { recursive: true });
 fs.symlinkSync(outside, path.join(T, "src", "out"));
-run(T, ["task", "start", "--role", "coder", "--goal", "symlink", "--scope", "src/**", "--verify", "node check.mjs"]);
+run(T, ["task", "start", "--force", "--role", "coder", "--goal", "symlink", "--scope", "src/**", "--verify", "node check.mjs"]);
 r = before("write", { path: "src/out/leak.txt" });
 const symlinkAllowed = r.code === 0;
 if (symlinkAllowed) fs.writeFileSync(path.join(T, "src/out/leak.txt"), "leak\n");
