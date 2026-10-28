@@ -155,14 +155,19 @@ export default {
       if (tool === "read" || tool === "other") return;
 
       const args = event?.input ?? {};
-      // Bootstrapping a contract is how a repo leaves the idle state. Blocking
-      // `ratchet task start` would make the gate impossible to satisfy.
-      if (tool === "bash" && /(?:^|[\s;&|()])ratchet\s+(?:task\s+start|init)\b/.test(String(args.command ?? ""))) return;
-
       const root = rootFor(tool, args, baseFor(event, args));
       // No .ratchet/config.json anywhere in this call's path: another agent's
       // repo, or a plain directory. Stay out of it.
       if (!root) return;
+
+      // Bootstrapping a contract is how an idle repo leaves the idle state.
+      // Only allow it while idle: with a live contract, `task start --force`
+      // would let one thread abandon another thread's contract.
+      if (
+        tool === "bash" &&
+        !fs.existsSync(path.join(root, ".ratchet", "current")) &&
+        /(?:^|[\s;&|()])ratchet\s+(?:task\s+start|init)\b/.test(String(args.command ?? ""))
+      ) return;
 
       const result = runHook(payloadFor("tool.before", tool, event, args, root), root);
       if (result.error) throw new Error(`[ratchet] ${result.error}`);

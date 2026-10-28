@@ -64,6 +64,14 @@ test("decide: ratchet task start is allowed without a contract", (t) => {
   assert.match(decision.reason, /contract bootstrap/);
 });
 
+test("decide: an inline payload is denied even when it names an in-scope path", (t) => {
+  const { root } = repo(t);
+  const command = "bash <<'EOF'\necho x > src/a.ts\nEOF";
+  const decision = decide(root, event("bash", { command }));
+  assert.equal(decision.allow, false);
+  assert.match(decision.reason, /Inline interpreter code/);
+});
+
 test("decide: record keeps a decision made without a contract", (t) => {
   const root = emptyRepo(t);
   const input = { command: "rm -rf src" };

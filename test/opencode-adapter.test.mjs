@@ -151,6 +151,23 @@ test("opencode adapter: an idle ratchet repo denies writes, allows read-only bas
   assert.equal(adapter.before({ tool: "bash", input: { command: "git status --porcelain" } }), undefined);
 });
 
+test("opencode adapter: task start is allowed when idle, denied with a live contract", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const idle = await harness(dir);
+  assert.equal(
+    idle.before({ tool: "bash", input: { command: 'ratchet task start --goal "x" --scope "**"' } }),
+    undefined,
+  );
+
+  start(dir);
+  const live = await harness(dir);
+  assert.throws(
+    () => live.before({ tool: "bash", input: { command: 'ratchet task start --force --goal "y" --scope "**"' } }),
+    /guard-state mutation/,
+  );
+});
+
 test("opencode adapter: disable allows writes until enable", { skip: skipped }, async (t) => {
   const dir = repo(t);
   assert.equal(ratchet(dir, ["init"]).status, 0);

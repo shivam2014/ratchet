@@ -94,6 +94,41 @@ test("classify: inline interpreter code is write-class and unresolved", () => {
   assert.deepEqual(r.paths, []);
 });
 
+test("classify: a heredoc payload is inline, not a read", () => {
+  for (const command of [
+    "python3 - <<'EOF'\nopen('src/x','w').write('x')\nEOF",
+    "python3 <<EOF\nprint(1)\nEOF",
+    "node <<'EOF'\nrequire('fs').writeFileSync('src/x','x')\nEOF",
+    "bash <<'EOF'\necho x > src/x\nEOF",
+    "perl - <<'EOF'\nopen F, '>src/x'\nEOF",
+  ]) {
+    const r = classifyBash(command);
+    assert.equal(r.inline, true, command.split("\n")[0]);
+    assert.equal(r.write, true, command.split("\n")[0]);
+  }
+});
+
+test("classify: other inline entry points are write-class", () => {
+  for (const command of [
+    'bun -e \'await Bun.write("src/x","x")\'',
+    'deno eval \'Deno.writeTextFileSync("src/x","x")\'',
+    'php -r \'file_put_contents("src/x","x");\'',
+    'sh -s <<EOF\necho x > src/x\nEOF',
+    'python3 - < script.py',
+  ]) {
+    const r = classifyBash(command);
+    assert.equal(r.inline, true, command);
+    assert.equal(r.write, true, command);
+  }
+});
+
+test("classify: a script file is not inline", () => {
+  for (const command of ["node script.mjs", "python3 tools/x.py", "bash test/e2e.sh", "bun run test"]) {
+    const r = classifyBash(command);
+    assert.equal(r.inline, false, command);
+  }
+});
+
 test("classify: rm names its operands", () => {
   const r = classifyBash("rm -f src/a.ts");
   assert.equal(r.write, true);
