@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createContract, saveContract } from "../lib/contract.mjs";
 import { decide, record } from "../lib/decide.mjs";
+import { readJsonl } from "../lib/fsx.mjs";
 
 function emptyRepo(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-decide-"));
@@ -40,6 +41,37 @@ test("decide: writes are denied without a contract", (t) => {
   const decision = decide(root, event("write", { path: "src/a.ts" }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /No active task contract/);
+});
+
+test("decide: read-only bash is allowed without a contract", (t) => {
+  const root = emptyRepo(t);
+  const decision = decide(root, event("bash", { command: "git status --porcelain" }));
+  assert.equal(decision.allow, true);
+  assert.equal(decision.op, "read");
+});
+
+test("decide: mutating bash is denied without a contract", (t) => {
+  const root = emptyRepo(t);
+  const decision = decide(root, event("bash", { command: "rm -rf src" }));
+  assert.equal(decision.allow, false);
+  assert.match(decision.reason, /No active task contract/);
+});
+
+test("decide: ratchet task start is allowed without a contract", (t) => {
+  const root = emptyRepo(t);
+  const decision = decide(root, event("bash", { command: 'cd repo && ratchet task start --goal "y"' }));
+  assert.equal(decision.allow, true);
+  assert.match(decision.reason, /contract bootstrap/);
+});
+
+test("decide: record keeps a decision made without a contract", (t) => {
+  const root = emptyRepo(t);
+  const input = { command: "rm -rf src" };
+  const decision = decide(root, event("bash", input));
+  record(root, { ...event("bash", input), harness: "test" }, decision);
+  const rows = readJsonl(path.join(root, ".ratchet", "events.jsonl"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].decision, "deny");
 });
 
 test("decide: write inside scope is allowed", (t) => {

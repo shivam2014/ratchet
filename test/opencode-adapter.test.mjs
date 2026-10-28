@@ -51,10 +51,10 @@ function start(dir) {
   assert.equal(result.status, 0, result.stderr);
 }
 
-async function harness(dir) {
+async function harness(dir, opts = {}) {
   const handlers = new Map();
   await loaded.adapter.setup({
-    location: { directory: dir },
+    location: { directory: opts.location ?? dir },
     tool: {
       hook(name, handler) {
         handlers.set(name, handler);
@@ -118,6 +118,37 @@ test("opencode adapter: no-ops outside a contract", { skip: skipped }, async (t)
   const adapter = await harness(dir);
   assert.equal(adapter.before({ tool: "write", input: { path: "x.txt" } }), undefined);
   assert.equal(adapter.after({ tool: "write", input: { path: "x.txt" }, result: { ok: true } }), undefined);
+});
+
+test("opencode adapter: resolves the repo from the target when the session is elsewhere", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  // T3 Code hosts every thread in one instance rooted at the app workspace,
+  // not the project. A call aimed at an absolute path must still find the repo.
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-opencode-elsewhere-"));
+  t.after(() => fs.rmSync(elsewhere, { recursive: true, force: true }));
+  const adapter = await harness(elsewhere, { location: elsewhere });
+
+  assert.equal(
+    adapter.before({ tool: "write", input: { filePath: path.join(dir, "src/a.ts") } }),
+    undefined,
+  );
+  assert.throws(
+    () => adapter.before({ tool: "write", input: { filePath: path.join(dir, "outside.txt") } }),
+    /outside scope/,
+  );
+});
+
+test("opencode adapter: an idle ratchet repo denies writes, allows read-only bash", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const adapter = await harness(dir);
+  assert.throws(
+    () => adapter.before({ tool: "write", input: { path: "src/a.ts" } }),
+    /No active task contract/,
+  );
+  assert.equal(adapter.before({ tool: "bash", input: { command: "git status --porcelain" } }), undefined);
 });
 
 test("opencode adapter: disable allows writes until enable", { skip: skipped }, async (t) => {

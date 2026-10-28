@@ -124,11 +124,13 @@ ratchet status
 | pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, `agent_end` hooks |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
 | OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
-| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet |
+| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet; the plugin resolves the repo from each call because T3 roots one OpenCode instance at the app workspace |
 | Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 
-Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`.
+Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`. `ratchet status` reports adapters found on disk even when this repo has no install manifest, and labels them `(detected)`.
+
+In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
 
 `--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
 
@@ -156,7 +158,7 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 
 ## Evidence
 
-- **240 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **247 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

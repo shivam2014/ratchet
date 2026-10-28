@@ -150,7 +150,7 @@ function commandInit(args) {
   const config = defaultConfig(root);
   saveConfig(root, config);
   ensureDir(path.join(stateDir(root), "runs"));
-  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\n");
+  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\nevents.jsonl\n");
   const rules = path.join(stateDir(root), "rules.tsv");
   if (!fs.existsSync(rules)) writeText(rules, "rule\tlayer\tenforcer\tproof\n");
   out(`ratchet init: ${root}`);
@@ -938,6 +938,45 @@ function commandEnable() {
   }
 }
 
+/** Adapter files that exist on disk even when no manifest in this repo records them. */
+function detectAdapters(root) {
+  const home = process.env.HOME || "";
+  const found = new Map();
+  const add = (name, file, scope) => {
+    if (!file || !fs.existsSync(file)) return;
+    const list = found.get(name) ?? [];
+    if (!list.some((item) => item.path === file)) list.push({ path: file, scope });
+    found.set(name, list);
+  };
+
+  add("opencode", path.join(home, ".config", "opencode", "plugins", "ratchet.js"), "user");
+  add("opencode", path.join(root, ".opencode", "plugins", "ratchet.js"), "project");
+  for (const [name, file] of [
+    ["claude", path.join(home, ".claude", "settings.json")],
+    ["codex", path.join(home, ".codex", "hooks.json")],
+  ]) {
+    if (fs.existsSync(file) && readText(file, "").includes("ratchet")) add(name, file, "user");
+  }
+  for (const [name, dir] of [
+    ["pi", path.join(home, ".pi", "agent", "extensions")],
+    ["pi", path.join(root, ".pi", "extensions")],
+  ]) {
+    if (!fs.existsSync(dir)) continue;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.toLowerCase().includes("ratchet")) continue;
+      const scope = path.resolve(dir).startsWith(path.resolve(root)) ? "project" : "user";
+      add(name, path.join(dir, entry), scope);
+    }
+  }
+  return found;
+}
+
 function commandStatus() {
   const root = findRoot(process.cwd());
   const contract = loadRun(root);
@@ -947,13 +986,23 @@ function commandStatus() {
   if (disabled) out(`  since ${disabled.at}: ${disabled.reason}`);
   out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}`);
   const entries = Object.entries(manifest.installed);
-  if (!entries.length) {
+  const listed = new Set(entries.flatMap(([, record]) => record.paths ?? []));
+  const detected = detectAdapters(root);
+  if (!entries.length && !detected.size) {
     out("installed: none");
     return;
   }
   out("installed:");
   for (const [name, record] of entries) {
     out(`  ${name.padEnd(9)} ${record.scope.padEnd(8)} ${record.paths.join(", ")}`);
+  }
+  // User-level adapters installed before a manifest existed (or from another
+  // repo) still guard this project. Report them instead of "installed: none".
+  for (const [name, list] of detected) {
+    for (const item of list) {
+      if (listed.has(item.path)) continue;
+      out(`  ${name.padEnd(9)} ${item.scope.padEnd(8)} ${item.path}  (detected)`);
+    }
   }
 }
 
@@ -1085,6 +1134,18 @@ function commandReport(args) {
     const paths = (e.paths ?? []).join(", ") || "-";
     const reason = e.reason ? `  — ${e.reason}` : "";
     out(`${e.decision.toUpperCase().padEnd(5)} ${String(e.tool).padEnd(6)} ${paths}${reason}`);
+  }
+
+  // Decisions made while no contract was live have no run to attach to.
+  const unbound = readJsonl(path.join(stateDir(root), "events.jsonl"));
+  if (unbound.length) {
+    out("");
+    out(`unbound: ${unbound.length} decision(s) outside a contract`);
+    for (const e of unbound.slice(-20)) {
+      const paths = (e.paths ?? []).join(", ") || "-";
+      const reason = e.reason ? `  — ${e.reason}` : "";
+      out(`${String(e.decision).toUpperCase().padEnd(5)} ${String(e.tool).padEnd(6)} ${paths}${reason}`);
+    }
   }
 }
 

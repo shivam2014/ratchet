@@ -413,6 +413,19 @@ test("e2e: task start locks the check surface and Stop blocks after the check ch
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "checks.json"), "utf8")).ranAt, evidence.ranAt);
 });
 
+test("e2e: status detects a user-level adapter with no manifest", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-home-"));
+  fs.mkdirSync(path.join(home, ".config", "opencode", "plugins"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".config", "opencode", "plugins", "ratchet.js"), "// adapter\n");
+
+  const status = ratchet(dir, ["status"], undefined, { HOME: home });
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /opencode\s+user\s+.*ratchet\.js\s+\(detected\)/);
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
 test("e2e: ratchet hook drives the normalized lifecycle", () => {
   const dir = session();
   assert.equal(ratchet(dir, ["init"]).status, 0);
