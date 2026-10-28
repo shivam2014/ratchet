@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createContract, saveContract } from "../lib/contract.mjs";
-import { decide, record } from "../lib/decide.mjs";
+import { decide, loadState, record } from "../lib/decide.mjs";
 import { readJsonl } from "../lib/fsx.mjs";
 
 function emptyRepo(t) {
@@ -105,6 +105,16 @@ test("decide: bash-inferred paths do not consume the file budget", (t) => {
 
   const bash = decide(root, event("bash", { command: "cp src/a.ts src/b.ts" }));
   assert.equal(bash.allow, true, bash.reason);
+});
+
+test("decide: an unresolved bash write still counts as a write", (t) => {
+  const { root, contract } = repo(t);
+  const decision = decide(root, event("bash", { command: "npm install" }));
+  assert.equal(decision.allow, true);
+  record(root, { ...event("bash", { command: "npm install" }), harness: "test" }, decision);
+  const state = loadState(root, contract.id);
+  assert.equal(state.writes, 1);
+  assert.equal(state.files.size, 0);
 });
 
 test("decide: record keeps a decision made without a contract", (t) => {
