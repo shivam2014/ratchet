@@ -57,6 +57,13 @@ test("normaliseTarget: absolute outside the repo stays absolute", (t) => {
   assert.equal(normaliseTarget(root, root, "/etc/passwd"), fs.realpathSync("/etc/passwd"));
 });
 
+test("normaliseTarget: expands a leading tilde", (t) => {
+  const root = temp(t);
+  const home = fs.realpathSync(process.env.HOME);
+  assert.equal(normaliseTarget(root, root, "~/notes.txt"), path.join(home, "notes.txt"));
+  assert.equal(normaliseTarget(root, root, "~"), home);
+});
+
 test("createContract: defaults and verify ids", (t) => {
   const root = temp(t);
   const contract = createContract(root, { goal: "g", role: "coder", scope: ["src/**"], verify: ["a", "b"] });

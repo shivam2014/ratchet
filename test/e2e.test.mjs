@@ -14,6 +14,14 @@ function session() {
     path.join(dir, "package.json"),
     JSON.stringify({ name: "demo", scripts: { check: 'node -e "process.exit(0)"' } }, null, 2),
   );
+  // The audit compares the working tree to the contract. A base commit keeps
+  // the fixture files (package.json) from looking like task changes.
+  spawnSync("git", ["add", "-A"], { cwd: dir });
+  spawnSync(
+    "git",
+    ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", "commit", "-qm", "base"],
+    { cwd: dir },
+  );
   return dir;
 }
 
@@ -476,3 +484,68 @@ test("e2e: ratchet hook drives the normalized lifecycle", () => {
   assert.equal(saved.ok, true);
 });
 
+
+test("e2e: comma-separated scope is split into patterns", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "comma scope",
+    "--scope", "src/**,tests/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
+  const contract = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "contract.json"), "utf8"));
+  assert.deepEqual(contract.scope, ["src/**", "tests/**"]);
+});
+
+test("e2e: done refuses a changed path outside scope", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "scope audit",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+
+  fs.writeFileSync(path.join(dir, "outside.txt"), "x\n");
+  const refused = ratchet(dir, ["done"]);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /outside scope/);
+  assert.match(refused.stderr, /outside\.txt/);
+
+  fs.rmSync(path.join(dir, "outside.txt"));
+  assert.equal(ratchet(dir, ["done"]).status, 0);
+});
+
+test("e2e: abandon --run closes a stranded run", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = (goal) =>
+    ratchet(dir, [
+      "task", "start", "--force",
+      "--role", "coder",
+      "--goal", goal,
+      "--scope", "src/**",
+      "--verify", 'node -e "process.exit(0)"',
+    ]);
+  assert.equal(start("first").status, 0);
+  assert.equal(start("second").status, 0);
+  const id = fs.readFileSync(path.join(dir, ".ratchet", "current"), "utf8").trim();
+
+  const closed = ratchet(dir, ["abandon", "--run", id, "--reason", "stranded"]);
+  assert.equal(closed.status, 0, closed.stderr);
+  assert.equal(fs.existsSync(path.join(dir, ".ratchet", "current")), false);
+  const result = JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "result.json"), "utf8"));
+  assert.equal(result.verdict, "abandoned");
+
+  const again = ratchet(dir, ["abandon", "--run", id, "--reason", "again"]);
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /already closed/);
+});

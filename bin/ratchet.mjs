@@ -40,6 +40,7 @@ import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
 import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
+import { scopeViolations } from "../lib/scope-audit.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
@@ -123,6 +124,14 @@ function out(text = "") {
 function fail(text, code = 1) {
   process.stderr.write(text + "\n");
   process.exit(code);
+}
+
+/** `--scope "src/**,tests/**"` is common input; accept it as two patterns. */
+function splitGlobs(values) {
+  return values
+    .flatMap((value) => String(value).split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function requireConfig(root) {
@@ -210,11 +219,11 @@ function commandTask(args) {
   if (!goal) fail("task start needs --goal \"...\"");
   const role = String(args.one("role", "coder"));
   const readOnly = args.has("read-only") || role === "reviewer" || role === "scout";
-  const scope = args.all("scope").length ? args.all("scope") : config.defaults?.scope ?? [];
+  const scope = args.all("scope").length ? splitGlobs(args.all("scope")) : config.defaults?.scope ?? [];
   if (!readOnly && !scope.length) {
     fail('task start needs --scope (for example --scope "src/**" --scope "tests/**"), or pass --read-only.');
   }
-  const deny = [...(config.defaults?.deny ?? []), ...args.all("deny")];
+  const deny = [...splitGlobs(config.defaults?.deny ?? []), ...splitGlobs(args.all("deny"))];
   const gates = [];
   if (args.has("pstack")) {
     gates.push(
@@ -480,6 +489,19 @@ function commandDone() {
   if (!checks) fail("REFUSED: no check evidence. Run: ratchet check");
   if (!checks.ok) fail("REFUSED: the last check run failed. Fix it, then run: ratchet check");
 
+  // Git is the authority for what changed. A shell write the classifier never
+  // saw, or one hidden inside an interpreter, still has to land in scope.
+  const outside = scopeViolations(root, contract);
+  if (outside.length) {
+    fail(
+      [
+        `REFUSED: ${outside.length} changed path(s) outside scope [${(contract.scope ?? []).join(", ")}]:`,
+        ...outside.slice(0, 20).map((p) => `  ${p}`),
+        "Commit or revert them, or start a contract that includes them.",
+      ].join("\n"),
+    );
+  }
+
   const result = resultFor(root, contract, checks, { verdict: "done" });
   const amendments = contract.checkAmendments ?? [];
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
@@ -537,16 +559,19 @@ function commandAmend(args) {
  */
 function commandAbandon(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  const requested = String(args.one("run", "")).trim();
+  const contract = requested ? loadRun(root, requested) : requireContract(root);
+  if (!contract) fail(`no run ${requested}`);
+  if (runFinished(root, contract.id)) fail(`run ${contract.id} is already closed`);
   const reason = String(args.one("reason", "")).trim();
   if (!reason) fail('abandon needs --reason "..." so the audit trail records why the contract was dropped');
 
   const result = resultFor(root, contract, null, { verdict: "abandoned", reason });
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
-  clearCurrent(root, contract.id);
+  if (currentId(root) === contract.id) clearCurrent(root, contract.id);
   out(`ABANDONED  ${contract.id}`);
   out(`reason: ${reason}`);
-  out("released: no active contract.");
+  out(currentId(root) ? `live contract unchanged: ${currentId(root)}` : "released: no active contract.");
 }
 
 function contractForRun(root, args, command) {
@@ -554,7 +579,7 @@ function contractForRun(root, args, command) {
   const auto = config.auto ?? {};
   const goal = String(args.one("goal", command.join(" ")) || "run");
   const scope = args.all("scope").length
-    ? args.all("scope")
+    ? splitGlobs(args.all("scope"))
     : Array.isArray(auto.scope)
       ? auto.scope
       : config.defaults?.scope ?? [];
@@ -566,7 +591,7 @@ function contractForRun(root, args, command) {
     goal,
     role: String(args.one("role", "coder")),
     scope,
-    deny: [...new Set([...(config.defaults?.deny ?? []), ...(auto.deny ?? [])])],
+    deny: [...new Set([...splitGlobs(config.defaults?.deny ?? []), ...splitGlobs(auto.deny ?? [])])],
     gates: [...(config.gates ?? []), ...(auto.gates ?? [])],
     maxFiles: Number(args.one("max-files", auto.maxFiles ?? config.defaults?.maxFiles ?? 12)),
     maxWrites: Number(args.one("max-writes", auto.maxWrites ?? config.defaults?.maxWrites ?? 60)),
@@ -1147,6 +1172,13 @@ function commandReport(args) {
       out(`${String(e.decision).toUpperCase().padEnd(5)} ${String(e.tool).padEnd(6)} ${paths}${reason}`);
     }
   }
+
+  const outside = scopeViolations(root, contract);
+  if (outside.length) {
+    out("");
+    out(`outside scope: ${outside.length} changed path(s)`);
+    for (const p of outside.slice(0, 20)) out(`  ${p}`);
+  }
 }
 
 function usage() {
@@ -1164,7 +1196,7 @@ usage:
   ratchet check [--timeout 120000]
   ratchet done
   ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
-  ratchet abandon --reason "..."              # close the live contract without claiming done
+  ratchet abandon --reason "..." [--run <id>]  # close the live contract, or one stranded run
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]

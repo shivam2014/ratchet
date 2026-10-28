@@ -40,7 +40,7 @@ test("hardening: an absolute target outside the repo is denied under ** scope", 
 
 test("hardening: an absolute target in a sibling temp dir is denied", (t) => {
   const root = repo(t);
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-sibling-"));
+  const outside = fs.mkdtempSync("/var/tmp/ratchet-sibling-");
   t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   const decision = decide(root, ev("write", { path: path.join(outside, "leak.txt") }));
   assert.equal(decision.allow, false);
@@ -241,7 +241,7 @@ test("hardening: cd .git does not hide a denied path", (t) => {
 
 test("hardening: cd outside the repo does not launder a relative path", (t) => {
   const root = repo(t, { scope: ["src/**"] });
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-cd-"));
+  const outside = fs.mkdtempSync("/var/tmp/ratchet-cd-");
   t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   const decision = decide(root, ev("bash", { command: `cd ${outside} && rm src/victim.txt` }));
   assert.equal(decision.allow, false);
@@ -256,7 +256,7 @@ test("hardening: cd into the scope still allows a relative write", (t) => {
 
 test("hardening: cd plus a shell wrapper does not launder a relative path", (t) => {
   const root = repo(t, { scope: ["src/**"] });
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-cd-wrap-"));
+  const outside = fs.mkdtempSync("/var/tmp/ratchet-cd-wrap-");
   t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   const decision = decide(root, ev("bash", { command: `cd ${outside} && bash -c 'rm src/victim.txt'` }));
   assert.equal(decision.allow, false);

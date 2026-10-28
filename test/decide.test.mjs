@@ -72,6 +72,41 @@ test("decide: an inline payload is denied even when it names an in-scope path", 
   assert.match(decision.reason, /Inline interpreter code/);
 });
 
+test("decide: temp paths outside the repo are allowed", (t) => {
+  const { root } = repo(t);
+  const file = path.join(os.tmpdir(), `ratchet-temp-${process.pid}.txt`);
+  const decision = decide(root, event("write", { path: file }));
+  assert.equal(decision.allow, true);
+  assert.match(decision.reason ?? "", /temp file/);
+});
+
+test("decide: scratch files do not consume the file budget", (t) => {
+  const { root } = repo(t, { maxFiles: 1 });
+  const real = decide(root, event("write", { path: "src/a.ts" }));
+  assert.equal(real.allow, true);
+  record(root, { ...event("write", { path: "src/a.ts" }), harness: "test" }, real);
+
+  for (let i = 0; i < 5; i++) {
+    const scratch = decide(root, event("write", { path: `src/tmp-${i}.mjs` }));
+    assert.equal(scratch.allow, true, scratch.reason);
+    record(root, { ...event("write", { path: `src/tmp-${i}.mjs` }), harness: "test" }, scratch);
+  }
+
+  const second = decide(root, event("write", { path: "src/b.ts" }));
+  assert.equal(second.allow, false);
+  assert.match(second.reason, /File budget exceeded/);
+});
+
+test("decide: bash-inferred paths do not consume the file budget", (t) => {
+  const { root } = repo(t, { maxFiles: 1 });
+  const real = decide(root, event("write", { path: "src/a.ts" }));
+  assert.equal(real.allow, true);
+  record(root, { ...event("write", { path: "src/a.ts" }), harness: "test" }, real);
+
+  const bash = decide(root, event("bash", { command: "cp src/a.ts src/b.ts" }));
+  assert.equal(bash.allow, true, bash.reason);
+});
+
 test("decide: record keeps a decision made without a contract", (t) => {
   const root = emptyRepo(t);
   const input = { command: "rm -rf src" };
@@ -121,14 +156,12 @@ test("decide: deny list matches case variants", (t) => {
   assert.equal(decide(root, event("write", { path: "src/a.ts" })).allow, true);
 });
 
-test("decide: a symlink cannot escape the scope", (t) => {
+test("decide: a symlink cannot escape to a non-temp path", (t) => {
   const { root } = repo(t);
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-outside-"));
-  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
-  fs.symlinkSync(outside, path.join(root, "src", "out"));
+  fs.symlinkSync("/etc", path.join(root, "src", "out"));
 
-  const decision = decide(root, event("write", { path: "src/out/leak.txt" }));
+  const decision = decide(root, event("write", { path: "src/out/hosts" }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /outside scope/);
 });

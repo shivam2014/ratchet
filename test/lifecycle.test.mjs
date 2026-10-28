@@ -17,6 +17,12 @@ function session(t) {
     path.join(dir, "package.json"),
     JSON.stringify({ name: "lifecycle", private: true }, null, 2),
   );
+  spawnSync("git", ["add", "-A"], { cwd: dir });
+  spawnSync(
+    "git",
+    ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", "commit", "-qm", "base"],
+    { cwd: dir },
+  );
   return dir;
 }
 
