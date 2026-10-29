@@ -117,3 +117,20 @@ test("loadRunForSession: a manual contract is the fallback", (t) => {
   assert.equal(loadRunForSession(root, "A")?.id, bound.id);
   assert.equal(loadRunForSession(root, "B")?.id, manual.id);
 });
+
+test("loadRunForSession: a stranded open run does not shadow the pointer", (t) => {
+  const root = temp(t);
+  const stranded = createContract(root, { goal: "stranded", role: "coder", scope: ["web/**"] });
+  stranded.createdAt = "2026-01-01T00:00:00.000Z";
+  saveContract(root, stranded);
+  const current = createContract(root, { goal: "current", role: "coder", scope: ["**"] });
+  current.createdAt = "2026-02-01T00:00:00.000Z";
+  saveContract(root, current);
+
+  // `done` writes result.json and clears the pointer. The older run is still
+  // open (no result), but it must not keep enforcing web/**.
+  fs.writeFileSync(path.join(root, ".ratchet", "runs", current.id, "result.json"), "{}\n");
+  fs.rmSync(path.join(root, ".ratchet", "current"), { force: true });
+
+  assert.equal(loadRunForSession(root, "s1"), null);
+});
