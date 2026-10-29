@@ -32,6 +32,7 @@ test("agents: replaces an old managed block", () => {
 test("agents: the managed block covers the current lifecycle", () => {
   assert.match(MANAGED, /ratchet amend/);
   assert.match(MANAGED, /ratchet abandon/);
+  assert.match(MANAGED, /ratchet approve/);
   assert.match(MANAGED, /worktree/i);
   assert.match(MANAGED, /--max-files/);
 });

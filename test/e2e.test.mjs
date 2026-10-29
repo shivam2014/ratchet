@@ -549,3 +549,43 @@ test("e2e: abandon --run closes a stranded run", () => {
   assert.equal(again.status, 1);
   assert.match(again.stderr, /already closed/);
 });
+
+test("e2e: approve records a hard-rule approval and done reports it", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "force push",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  const hook = (command) =>
+    ratchet(
+      dir,
+      ["hook"],
+      JSON.stringify({ type: "tool.before", harness: "test", session_id: "s1", tool: "bash", input: { command }, cwd: dir }),
+    );
+
+  const denied = hook("git push --force origin main");
+  assert.equal(denied.status, 2);
+  assert.match(denied.stderr, /ratchet approve --rule force-push/);
+
+  const bad = ratchet(dir, ["approve", "--rule", "sudo", "--reason", "nope"]);
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /cannot be approved/);
+
+  const approved = ratchet(dir, ["approve", "--rule", "force-push", "--reason", "fresh public history"]);
+  assert.equal(approved.status, 0, approved.stderr);
+
+  const allowed = hook("git push --force origin main");
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.equal(JSON.parse(allowed.stdout).allow, true);
+
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+  const done = ratchet(dir, ["done"]);
+  assert.equal(done.status, 0, done.stderr);
+  assert.match(done.stdout, /approved: force-push \(fresh public history\)/);
+});

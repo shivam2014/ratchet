@@ -41,6 +41,7 @@ import { evaluateStop } from "../lib/stop.mjs";
 import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
 import { scopeViolations } from "../lib/scope-audit.mjs";
+import { APPROVABLE_RULES } from "../lib/classify.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
@@ -460,6 +461,7 @@ function resultFor(root, contract, checks, extra = {}) {
     counts: { files: state.files.size, writes: state.writes },
     observed: { events: readJsonl(eventsPath(root, contract.id)).length, writes: state.writes },
     amendments: (contract.checkAmendments ?? []).map((a) => ({ at: a.at, reason: a.reason, changes: a.changes })),
+    approvals: (contract.approvals ?? []).map((a) => ({ rule: a.rule, reason: a.reason, at: a.at })),
     checks: checks
       ? {
           ok: checks.ok,
@@ -504,12 +506,14 @@ function commandDone() {
 
   const result = resultFor(root, contract, checks, { verdict: "done" });
   const amendments = contract.checkAmendments ?? [];
+  const approvals = contract.approvals ?? [];
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
   clearCurrent(root, contract.id);
   out(`DONE  ${contract.id}`);
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
   out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
   if (amendments.length) out(`amended: ${amendments.map((a) => a.reason).join("; ")}`);
+  if (approvals.length) out(`approved: ${approvals.map((a) => `${a.rule} (${a.reason})`).join("; ")}`);
   out(`changed: ${result.git.changed ?? "?"} file(s)`);
   if (!contract.readOnly && result.counts.writes === 0) {
     out("WARN  the guard observed 0 writes. Scope was not enforced for this run; only the check surface was.");
@@ -572,6 +576,23 @@ function commandAbandon(args) {
   out(`ABANDONED  ${contract.id}`);
   out(`reason: ${reason}`);
   out(currentId(root) ? `live contract unchanged: ${currentId(root)}` : "released: no active contract.");
+}
+
+function commandApprove(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const rule = String(args.one("rule", "")).trim();
+  const reason = String(args.one("reason", "")).trim();
+  if (!rule) fail(`approve needs --rule <${[...APPROVABLE_RULES].join("|")}>`);
+  if (!APPROVABLE_RULES.has(rule)) fail(`rule ${rule} cannot be approved. Approvable: ${[...APPROVABLE_RULES].join(", ")}`);
+  if (!reason) fail('approve needs --reason "..." so the audit trail records who approved it');
+  const approvals = contract.approvals ?? [];
+  if (approvals.some((entry) => entry.rule === rule)) fail(`rule ${rule} is already approved for ${contract.id}`);
+  contract.approvals = [...approvals, { rule, reason, at: new Date().toISOString() }];
+  saveContract(root, contract);
+  out(`APPROVED  ${rule}`);
+  out(`reason:    ${reason}`);
+  out(`contract:  ${contract.id}`);
 }
 
 function contractForRun(root, args, command) {
@@ -1197,6 +1218,7 @@ usage:
   ratchet done
   ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
   ratchet abandon --reason "..." [--run <id>]  # close the live contract, or one stranded run
+  ratchet approve --rule force-push --reason "..."  # allow one operational hard rule, on the record
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
@@ -1256,6 +1278,9 @@ switch (cmd) {
     break;
   case "abandon":
     commandAbandon(args);
+    break;
+  case "approve":
+    commandApprove(args);
     break;
   case "audit":
     commandAudit(args);

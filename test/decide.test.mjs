@@ -117,6 +117,31 @@ test("decide: an unresolved bash write still counts as a write", (t) => {
   assert.equal(state.files.size, 0);
 });
 
+test("decide: a force push is denied with an approval hint", (t) => {
+  const { root } = repo(t);
+  const decision = decide(root, event("bash", { command: "git push --force origin main" }));
+  assert.equal(decision.allow, false);
+  assert.match(decision.reason, /hard rule: force push/);
+  assert.match(decision.reason, /ratchet approve --rule force-push/);
+});
+
+test("decide: an approved force push is allowed with the reason", (t) => {
+  const { root, contract } = repo(t);
+  contract.approvals = [{ rule: "force-push", reason: "fresh public history", at: new Date().toISOString() }];
+  saveContract(root, contract);
+
+  const decision = decide(root, event("bash", { command: "git push --force origin main" }));
+  assert.equal(decision.allow, true);
+  assert.match(decision.reason, /approved hard rule: force-push/);
+});
+
+test("decide: non-approvable hard rules stay denied", (t) => {
+  const { root } = repo(t, {});
+  const decision = decide(root, event("bash", { command: "sudo rm -rf /tmp/x" }));
+  assert.equal(decision.allow, false);
+  assert.doesNotMatch(decision.reason, /ratchet approve/);
+});
+
 test("decide: record keeps a decision made without a contract", (t) => {
   const root = emptyRepo(t);
   const input = { command: "rm -rf src" };
