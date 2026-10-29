@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { MANAGED_START, renderAgents, syncAgents } from "../lib/agents-md.mjs";
+import { MANAGED, MANAGED_START, renderAgents, syncAgents } from "../lib/agents-md.mjs";
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-agents-"));
@@ -27,6 +27,13 @@ test("agents: replaces an old managed block", () => {
   const next = renderAgents(old);
   assert.doesNotMatch(next, /\nold\n/);
   assert.match(next, /Ratchet workflow/);
+});
+
+test("agents: the managed block covers the current lifecycle", () => {
+  assert.match(MANAGED, /ratchet amend/);
+  assert.match(MANAGED, /ratchet abandon/);
+  assert.match(MANAGED, /worktree/i);
+  assert.match(MANAGED, /--max-files/);
 });
 
 test("syncAgents: writes and reports drift", (t) => {
