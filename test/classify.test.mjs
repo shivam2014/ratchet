@@ -161,3 +161,47 @@ test("classify: npm install is a mutation with no resolved path", () => {
   assert.equal(r.write, true);
   assert.deepEqual(r.paths, []);
 });
+
+test("classify: hard rules run on argv, not text inside data", () => {
+  const heredoc = classifyBash("cat > /tmp/note.mjs <<'EOF'\ngit push --force origin main\nEOF");
+  assert.equal(heredoc.hardDeny, false);
+  assert.match(heredoc.paths.join(","), /\/tmp\/note\.mjs/);
+
+  const message = classifyBash('git commit -m "remove the sudo path"');
+  assert.equal(message.hardDeny, false);
+
+  const echo = classifyBash('echo "git push --force"');
+  assert.equal(echo.hardDeny, false);
+});
+
+test("classify: hard rules still catch the real commands", () => {
+  const push = classifyBash("git push --force origin main");
+  assert.equal(push.hardDeny, true);
+  assert.equal(push.hardRule, "force-push");
+
+  const quoted = classifyBash("g''it push --force origin main");
+  assert.equal(quoted.hardDeny, true);
+
+  const withDir = classifyBash("git -C repo push --force origin main");
+  assert.equal(withDir.hardDeny, true);
+
+  const lease = classifyBash("git push --force-with-lease origin main");
+  assert.equal(lease.hardDeny, false);
+
+  const shell = classifyBash("sh -c 'git push --force origin main'");
+  assert.equal(shell.hardDeny, true);
+});
+
+test("classify: an unresolved substitution fails closed", () => {
+  const r = classifyBash("echo $(git push --force)");
+  assert.equal(r.inline, true);
+  assert.equal(r.write, true);
+  assert.match(r.notes.join(" "), /command substitution/);
+});
+
+test("classify: task start is only guarded when forced", () => {
+  assert.equal(classifyBash("ratchet task start --help").hardDeny, false);
+  assert.equal(classifyBash("ratchet check && ratchet done && ratchet task start --goal x --scope '**'").hardDeny, false);
+  assert.equal(classifyBash("ratchet task start --force --goal x --scope '**'").hardDeny, true);
+  assert.equal(classifyBash("ratchet disable --reason x").hardDeny, true);
+});
