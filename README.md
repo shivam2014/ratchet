@@ -112,6 +112,14 @@ ratchet amend --reason "added assertions for the retry path"
 
 The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract and records the old one as abandoned.
 
+A hard rule blocked a legitimate operation? A human can approve one for the live contract, on the record:
+
+```bash
+ratchet approve --rule force-push --reason "fresh public history"
+```
+
+Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval is stored in `contract.json`, reported by `done`, and written to `result.json`. Privilege escalation, `--no-verify`, guard-state changes, and scope denials are not approvable.
+
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
 
 ## Harnesses
@@ -154,13 +162,14 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
 | `ratchet amend` | Re-baseline the locked check surface for the live contract; `--reason` is required and recorded |
 | `ratchet abandon` | Close the live contract, or a stranded one with `--run <id>`; `--reason` is required and recorded |
+| `ratchet approve` | Allow one operational hard rule (`force-push`, `hard-reset`, `git-clean`) for the live contract; `--reason` is required and recorded |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
 | `ratchet doctor` | Check the install; `--harness codex,claude` verifies hooks, trust, and no-op behaviour |
 | `ratchet sync` | Write the managed `AGENTS.md` block; `--install` adds the OpenCode and git hooks |
 
 ## Evidence
 
-- **264 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **270 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
