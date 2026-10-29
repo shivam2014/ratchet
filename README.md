@@ -207,7 +207,7 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
 
 Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 
