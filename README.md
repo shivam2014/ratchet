@@ -124,6 +124,8 @@ Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval i
 
 `--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
 
+The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest` exits 1 when something needs a human.
+
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
 
 ## Harnesses
@@ -163,6 +165,8 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, save evidence |
 | `ratchet report` | Show the allow/deny trail for the current run; `--json` for machine output |
+| `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--json` |
+| `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, exceptions; exits 1 when something needs a human |
 | `ratchet done` | Refuse without passing evidence; write `result.json` |
 | `ratchet amend` | Re-baseline the locked check surface for the live contract; `--reason` is required and recorded |
 | `ratchet abandon` | Close the live contract, or a stranded one with `--run <id>`; `--reason` is required and recorded |
@@ -173,7 +177,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **291 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **295 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

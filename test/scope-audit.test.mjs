@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { changedPaths, scopeViolations } from "../lib/scope-audit.mjs";
+import { changedPaths, scopeViolations, taskChanges, taskScopeViolations } from "../lib/scope-audit.mjs";
 
 function repo(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-audit-"));
@@ -42,4 +42,25 @@ test("scope audit: no git means no audit, not a crash", (t) => {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   assert.equal(changedPaths(dir), null);
   assert.deepEqual(scopeViolations(dir, { scope: ["src/**"] }), []);
+});
+
+test("scope audit: committed changes since the base are task changes", (t) => {
+  const dir = repo(t);
+  const git = (...args) =>
+    spawnSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", ...args], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+  fs.writeFileSync(path.join(dir, "base.txt"), "base\n");
+  git("add", "-A");
+  git("commit", "-qm", "base");
+  const base = spawnSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).stdout.trim();
+
+  fs.writeFileSync(path.join(dir, "outside.txt"), "x\n");
+  git("add", "-A");
+  git("commit", "-qm", "outside");
+
+  const contract = { baseCommit: base, scope: ["src/**"] };
+  assert.deepEqual(taskChanges(dir, contract), ["outside.txt"]);
+  assert.deepEqual(taskScopeViolations(dir, contract), ["outside.txt"]);
 });

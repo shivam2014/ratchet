@@ -41,7 +41,9 @@ import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
 import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
-import { scopeViolations } from "../lib/scope-audit.mjs";
+import { taskChanges, taskScopeViolations } from "../lib/scope-audit.mjs";
+import { buildEvidence, evidenceClean } from "../lib/evidence.mjs";
+import { buildDigest } from "../lib/digest.mjs";
 import { APPROVABLE_RULES } from "../lib/classify.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
@@ -499,7 +501,8 @@ function commandDone() {
 
   // Git is the authority for what changed. A shell write the classifier never
   // saw, or one hidden inside an interpreter, still has to land in scope.
-  const outside = scopeViolations(root, contract);
+  const changed = taskChanges(root, contract);
+  const outside = taskScopeViolations(root, contract);
   if (outside.length) {
     fail(
       [
@@ -510,7 +513,10 @@ function commandDone() {
     );
   }
 
-  const result = resultFor(root, contract, checks, { verdict: "done" });
+  const result = resultFor(root, contract, checks, {
+    verdict: "done",
+    scopeAudit: { checkedAt: new Date().toISOString(), changed, outside },
+  });
   const amendments = contract.checkAmendments ?? [];
   const approvals = contract.approvals ?? [];
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
@@ -1219,12 +1225,79 @@ function commandReport(args) {
     }
   }
 
-  const outside = scopeViolations(root, contract);
+  const outside = taskScopeViolations(root, contract);
   if (outside.length) {
     out("");
     out(`outside scope: ${outside.length} changed path(s)`);
     for (const p of outside.slice(0, 20)) out(`  ${p}`);
   }
+}
+
+function commandEvidence(args) {
+  const root = findRoot(process.cwd());
+  const id = String(args.one("run", "")).trim();
+  const contract = id ? loadRun(root, id) : loadRun(root) ?? latestRun(root);
+  if (!contract) fail("No run found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+  const evidence = buildEvidence(root, contract);
+  const clean = evidenceClean(evidence);
+  if (args.has("json")) {
+    out(JSON.stringify({ ...evidence, clean }, null, 2));
+    process.exit(clean ? 0 : 1);
+  }
+
+  out(`EVIDENCE  ${evidence.run}`);
+  out(`goal:       ${evidence.goal}`);
+  out(`verdict:    ${evidence.verdict}${clean ? "" : "  (not clean)"}`);
+  out(`started:    ${evidence.startedAt}`);
+  if (evidence.finishedAt) out(`finished:   ${evidence.finishedAt}`);
+  out(`scope:      ${evidence.contract.scope.join(", ") || "(none)"}`);
+  out(`verify:     ${evidence.contract.verify.join(" && ") || "(none)"}`);
+  if (evidence.checks) {
+    const passed = evidence.checks.results.filter((entry) => entry.status === 0).length;
+    out(`checks:     ${passed}/${evidence.checks.results.length} pass  (${evidence.checks.ranAt})`);
+    for (const entry of evidence.checks.results) {
+      out(`  ${entry.status === 0 ? "PASS" : "FAIL"}  ${entry.id}  ${entry.cmd}`);
+    }
+  } else {
+    out("checks:     none recorded");
+  }
+  out(`changes:    ${evidence.changes.count} file(s), ${evidence.changes.outsideCount} outside scope`);
+  for (const p of evidence.changes.changed.slice(0, 20)) {
+    out(`  ${evidence.changes.outside.includes(p) ? "OUT " : "    "}${p}`);
+  }
+  out(`guard:      ${evidence.guard.events} event(s), ${evidence.guard.writes ?? "?"} write(s)`);
+  out(`exceptions: ${evidence.exceptions.amendments.length} amendment(s), ${evidence.exceptions.approvals.length} approval(s)`);
+  out(`rules:      ${evidence.rules.configured ? `${evidence.rules.total} rule(s), ${evidence.rules.errors} error(s)` : "not configured"}`);
+  out("ci:         not recorded; git and CI remain the authority");
+  if (!clean) out("NOTE: this run is not clean; do not present it as done.");
+  process.exit(clean ? 0 : 1);
+}
+
+function commandDigest(args) {
+  const root = findRoot(process.cwd());
+  const digest = buildDigest(root, { limit: Number(args.one("limit", 30)) });
+  if (!digest.total) fail("No runs found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+  const healthy = digest.attention.length === 0;
+  if (args.has("json")) {
+    out(JSON.stringify({ ...digest, healthy }, null, 2));
+    process.exit(healthy ? 0 : 1);
+  }
+
+  const c = digest.counts;
+  out(`RATCHET DIGEST  last ${digest.total} run(s)`);
+  out(`runs:       ${c.done} done · ${c.abandoned} abandoned · ${c.failed} failed · ${c.open} open`);
+  out(`checks:     ${c.checksPass} pass · ${c.checksFail} fail · ${c.checksUnknown} unknown`);
+  out(`scope:      ${c.outsideRuns} run(s) with outside changes`);
+  out(`guard:      ${c.wired}/${c.runs} wired · ${c.events} events · ${c.denies} deny`);
+  out(`exceptions: ${c.amendments} amendment(s) · ${c.approvals} approval(s)`);
+  out(`rules:      ${digest.rules.configured ? `${digest.rules.total} rule(s) · ${digest.rules.errors} error(s)` : "not configured"}`);
+  if (healthy) {
+    out("health:     no attention items");
+  } else {
+    out("needs attention:");
+    for (const item of digest.attention) out(`  - ${item}`);
+  }
+  process.exit(healthy ? 0 : 1);
 }
 
 function usage() {
@@ -1235,6 +1308,8 @@ usage:
   ratchet task start --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--pstack] [--bend] [--force]
   ratchet task status
   ratchet report [--json]                     # allow/deny trail for the current run
+  ratchet evidence [--run <id>] [--json]      # the run certificate: checks, changes, exceptions
+  ratchet digest [--limit N] [--json]         # global view: run health and what needs a human
   ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
@@ -1282,6 +1357,12 @@ switch (cmd) {
     break;
   case "report":
     commandReport(args);
+    break;
+  case "evidence":
+    commandEvidence(args);
+    break;
+  case "digest":
+    commandDigest(args);
     break;
   case "guard":
     commandGuard(args);

@@ -628,3 +628,94 @@ test("e2e: status shows the contract age and stranded runs", () => {
   assert.match(status.stdout, /stranded: 1/);
   assert.match(status.stdout, /ratchet abandon --run/);
 });
+
+test("e2e: evidence certifies a clean run", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "evidence",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src", "a.ts"), "export const a = 1\n");
+
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+  assert.equal(ratchet(dir, ["done"]).status, 0);
+
+  const evidence = ratchet(dir, ["evidence"]);
+  assert.equal(evidence.status, 0, evidence.stderr);
+  assert.match(evidence.stdout, /EVIDENCE/);
+  assert.match(evidence.stdout, /checks: +1\/1 pass/);
+  assert.match(evidence.stdout, /changes: +1 file\(s\), 0 outside scope/);
+
+  const json = ratchet(dir, ["evidence", "--json"]);
+  assert.equal(json.status, 0, json.stderr);
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.clean, true);
+  assert.deepEqual(parsed.changes.changed, ["src/a.ts"]);
+  assert.equal(parsed.checks.ok, true);
+});
+
+test("e2e: done refuses a committed out-of-scope file", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "committed escape",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 0, start.stderr);
+
+  fs.writeFileSync(path.join(dir, "outside.txt"), "x\n");
+  spawnSync("git", ["add", "outside.txt"], { cwd: dir });
+  spawnSync(
+    "git",
+    ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", "commit", "-qm", "outside"],
+    { cwd: dir },
+  );
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+
+  const done = ratchet(dir, ["done"]);
+  assert.equal(done.status, 1);
+  assert.match(done.stderr, /outside scope/);
+  assert.match(done.stderr, /outside\.txt/);
+});
+
+test("e2e: digest shows the global view", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = (goal) =>
+    ratchet(dir, [
+      "task", "start",
+      "--role", "coder",
+      "--goal", goal,
+      "--scope", "src/**",
+      "--verify", 'node -e "process.exit(0)"',
+    ]);
+
+  assert.equal(start("first").status, 0);
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src", "a.ts"), "a\n");
+  assert.equal(ratchet(dir, ["check"]).status, 0);
+  assert.equal(ratchet(dir, ["done"]).status, 0);
+  assert.equal(start("second").status, 0);
+
+  const digest = ratchet(dir, ["digest"]);
+  assert.equal(digest.status, 1);
+  assert.match(digest.stdout, /RATCHET DIGEST/);
+  assert.match(digest.stdout, /1 done .* 1 open/);
+  assert.match(digest.stdout, /no guard events/);
+
+  const json = ratchet(dir, ["digest", "--json"]);
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.total, 2);
+  assert.equal(parsed.counts.done, 1);
+  assert.equal(parsed.counts.open, 1);
+  assert.equal(parsed.healthy, false);
+});
