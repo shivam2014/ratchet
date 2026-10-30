@@ -503,7 +503,7 @@ test("cli: ratchet sandbox runs a command through the live contract profile", { 
   assert.equal(init.status, 0, init.stderr);
   const start = spawnSync(
     process.execPath,
-    [BIN, "task", "start", "--role", "coder", "--goal", "sandbox cli", "--scope", "src/**"],
+    [BIN, "task", "start", "--role", "coder", "--goal", "sandbox cli", "--scope", "src/**", "--verify", "node --version"],
     { cwd: root, encoding: "utf8" },
   );
   assert.equal(start.status, 0, start.stderr);
