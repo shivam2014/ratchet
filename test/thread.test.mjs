@@ -298,3 +298,26 @@ test("thread: status lists every live contract and warns about the shared checko
   assert.match(sessionView.stdout, new RegExp(`contract:\\s+${idA}`));
   assert.match(sessionView.stdout, /live: 2 contract\(s\)/);
 });
+
+test("thread: a forced start is allowed only for the session that owns the contract", (t) => {
+  const dir = repo(t);
+  assert.equal(start(dir, "owner", "ses-owner").status, 0);
+
+  const event = (session) =>
+    JSON.stringify({
+      type: "tool.before",
+      harness: "test",
+      session_id: session,
+      tool: "bash",
+      input: { command: 'ratchet task start --force --goal "next" --scope "src/**"' },
+      cwd: dir,
+    });
+
+  const owned = ratchet(dir, ["hook"], event("ses-owner"));
+  assert.equal(owned.status, 0, owned.stderr);
+  assert.equal(JSON.parse(owned.stdout).allow, true);
+
+  const other = ratchet(dir, ["hook"], event("ses-other"));
+  assert.equal(other.status, 2);
+  assert.match(other.stderr, /abandon another thread/);
+});
