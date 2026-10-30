@@ -158,7 +158,9 @@ function shortHash(hash) {
 /** Resolve the verify commands for a new task contract. */
 function taskVerify(args, config) {
   if (args.one("verify") === true) {
-    fail('--verify needs a command. Example: --verify "npm test"');
+    fail(
+      '--verify needs a command. Example: ratchet task start --role coder --goal "..." --scope "src/**" --verify "npm test"',
+    );
   }
   if (args.all("verify").length) return args.all("verify");
   return [
@@ -1120,7 +1122,7 @@ function commandAmend(args) {
     if (!brief.exists) {
       fail(
         [
-          `no ${BRIEF_FILE} to amend. Restore it,`,
+          `no ${BRIEF_FILE} to amend. Restore it: git checkout -- .ratchet/requirements.md`,
           'or close the contract without claiming success: ratchet abandon --reason "..."',
         ].join("\n"),
       );
