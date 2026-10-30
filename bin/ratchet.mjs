@@ -48,6 +48,7 @@ import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
 import { taskChanges, taskScopeViolations } from "../lib/scope-audit.mjs";
 import { preCommitReport } from "../lib/precommit.mjs";
+import { cleanViolation } from "../lib/clean.mjs";
 import { buildEvidence, evidenceClean } from "../lib/evidence.mjs";
 import { buildDigest } from "../lib/digest.mjs";
 import { APPROVABLE_RULES } from "../lib/classify.mjs";
@@ -72,7 +73,7 @@ import { codexHome, findRatchetHooks, hookTrustHash, readTrustHash } from "../li
 
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
-  "user", "project", "yes", "dry-run", "global", "pstack", "bend",
+  "user", "project", "yes", "dry-run", "global", "pstack", "bend", "require-clean",
 ]);
 
 
@@ -329,6 +330,12 @@ function commandTask(args) {
     );
   }
 
+  const requireClean = args.has("require-clean");
+  if (requireClean) {
+    const dirty = cleanViolation(root, { id: "a new contract", requireClean: true });
+    if (dirty) fail(dirty);
+  }
+
   // One live contract per checkout is the safe default. A session-bound start
   // may join other session-bound contracts, but a manual contract still keeps
   // the old single-contract rule: it has no session to own a second boundary.
@@ -457,6 +464,7 @@ function commandTask(args) {
     goal,
     role,
     readOnly,
+    requireClean,
     scope: scoped,
     deny,
     gates,
@@ -473,6 +481,7 @@ function commandTask(args) {
   out(`scope:   ${contract.scope.join(", ")}`);
   out(`budgets: ${contract.budgets.maxFiles} files, ${contract.budgets.maxWrites} writes`);
   if (contract.gates?.length) out(`gates:   ${contract.gates.map((g) => g.artifact).join(", ")}`);
+  if (contract.requireClean) out("clean:   required (tracked changes must be committed)");
   out(`verify:  ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
   const nowLive = liveRuns(root);
   if (nowLive.length > 1) {
@@ -672,6 +681,10 @@ function commandCheck(args) {
   const root = findRoot(process.cwd());
   const config = requireConfig(root);
   const contract = contractForSession(root, flagValue(args, "session"));
+  if (contract) {
+    const dirty = cleanViolation(root, contract);
+    if (dirty) fail(dirty);
+  }
   if (contract?.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
     if (changes.length) fail(`check surface changed: ${changes.join(", ")}. If the change is intended, run: ratchet amend --reason "..."`);
@@ -739,6 +752,8 @@ function commandDone(args) {
   const sessionId = flagValue(args, "session");
   const contract = requireContract(root, sessionId);
   assertLeadOwner(contract, sessionId, "done");
+  const dirty = cleanViolation(root, contract);
+  if (dirty) fail(dirty);
   if (contract.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
     if (changes.length) {
@@ -900,9 +915,15 @@ function contractForRun(root, args, command) {
   const verify = args.all("verify").length
     ? args.all("verify")
     : (config.checks ?? []).map((check) => check.cmd);
+  const requireClean = args.has("require-clean");
+  if (requireClean) {
+    const dirty = cleanViolation(root, { id: "a new run", requireClean: true });
+    if (dirty) fail(dirty);
+  }
   const contract = createContract(root, {
     goal,
     role: String(args.one("role", "coder")),
+    requireClean,
     scope,
     deny: [...new Set([...splitGlobs(config.defaults?.deny ?? []), ...splitGlobs(auto.deny ?? [])])],
     gates: [...(config.gates ?? []), ...(auto.gates ?? [])],
@@ -1611,7 +1632,7 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--pstack] [--bend] [--force]
+  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--require-clean] [--pstack] [--bend] [--force]
   ratchet task status [--session <id>]
   ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]
   ratchet report [--session <id>] [--json]    # allow/deny trail for the current run
@@ -1621,7 +1642,7 @@ usage:
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
   ratchet hook pre-commit                     # staged paths vs contract scope, then verify
-  ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] -- <command...>
+  ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] [--require-clean] -- <command...>
   ratchet check [--session <id>] [--timeout 120000]
   ratchet done [--session <id>]
   ratchet amend [--session <id>] --reason "..."  # re-baseline the locked check surface, on the record
