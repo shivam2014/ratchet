@@ -1,3 +1,5 @@
 runs/
 last-check.json
 events.jsonl
+current
+install.json
