@@ -232,7 +232,13 @@ test("brief: a contract without profile or skills keeps the old output", (t) => 
   const root = temp(t);
   saveConfig(root, defaultConfig(root));
 
-  const start = run(root, ["task", "start", "--role", "coder", "--goal", "manual task", "--scope", "src/**"]);
+  const start = run(root, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "manual task",
+    "--scope", "src/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
   assert.equal(start.status, 0, start.stderr);
 
   const printed = run(root, ["prompt"]);

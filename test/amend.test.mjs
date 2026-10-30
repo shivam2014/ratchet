@@ -116,7 +116,13 @@ test("task start --force: replaces a live contract and marks it abandoned", (t) 
   assert.equal(ratchet(dir, ["init"]).status, 0);
   const first = start(dir, "first");
 
-  const forced = ratchet(dir, ["task", "start", "--force", "--role", "coder", "--goal", "second", "--scope", "**"]);
+  const forced = ratchet(dir, [
+    "task", "start", "--force",
+    "--role", "coder",
+    "--goal", "second",
+    "--scope", "**",
+    "--verify", "node check.mjs",
+  ]);
   assert.equal(forced.status, 0, forced.stderr);
   assert.match(forced.stdout, new RegExp(`superseded: ${first}`));
 

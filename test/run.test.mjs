@@ -110,7 +110,7 @@ test("run: a failing command still records the check result", (t) => {
   assert.equal(saved.verdict, "done");
 });
 
-test("run: no verify commands ends uncertified", (t) => {
+test("run: no verify commands refuses to start", (t) => {
   const dir = session(t, {});
   write(dir, "agent.mjs", "process.exit(0);\n");
   ratchet(dir, ["init"]);
@@ -123,8 +123,7 @@ test("run: no verify commands ends uncertified", (t) => {
     "node", "agent.mjs",
   ]);
   assert.equal(run.status, 1);
-  assert.match(run.stdout, /verdict: uncertified/);
-  const saved = result(dir);
-  assert.equal(saved.verdict, "uncertified");
-  assert.equal(saved.checks.empty, true);
+  assert.match(run.stderr, /REFUSED: no verify command/);
+  assert.match(run.stderr, /ratchet run .*--verify "npm test"/);
+  assert.equal(fs.existsSync(path.join(dir, ".ratchet", "current")), false);
 });

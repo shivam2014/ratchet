@@ -15,7 +15,7 @@ Ratchet is a harness-neutral contract and verification gate for coding agents. I
 ```console
 $ ratchet task start --role coder --goal "add hello file" --scope "src/**"
 scope:   src/**
-verify:  npm run check
+verify:  npm run test
 
 $ echo '{"harness":"demo","tool":"write","input":{"path":"lib/leak.txt"}}' | ratchet guard
 {"allow":false,"reason":"lib/leak.txt is outside scope [src/**]. ..."}
@@ -50,7 +50,8 @@ The whole policy is a small JSON file, readable by any harness, script, or CI jo
 | `scope` | Writable globs. A path that does not match is denied. |
 | `deny` | Always blocked, even inside scope. |
 | `budgets` | Caps on distinct files and writes. Crossing a cap denies. Scratch files (`tmp-*`, `*.tmp`, `scratch/`) and paths inferred from bash do not count. |
-| `verify` | Commands `ratchet check` runs. `ratchet done` refuses unless all exit 0. |
+| `verify` | Commands `ratchet check` runs. `ratchet done` refuses unless all exit 0. A non-read-only contract needs at least one that can fail. |
+| `requireBrief` / `requirementsHash` | The requirements brief is required for this run, plus the hash it was started with. `check` and `done` refuse if the file disappears or changes. |
 | `role` | Capability profile: coder, reviewer, writer, or a repo-defined role. |
 | `goal` | Audit label. |
 | `session_id` / `aliases` | The lead harness session and any worker sessions bound with `ratchet task bind`. Empty means a manual contract. |
@@ -107,6 +108,35 @@ ratchet done
 
 `ratchet done` releases the contract. A new task starts with a new contract.
 
+### Requirements intake
+
+The eight intake questions live in `.ratchet/requirements.md`:
+
+```bash
+ratchet brief --init                    # write the empty template (refuses to overwrite without --force)
+ratchet brief --check                   # list missing sections; exits 1 until every answer is real
+ratchet brief --from answers.json       # or a Markdown file with "## <heading>" sections
+```
+
+The sections are outcome and success, what must never happen, out of scope, constraints, irreversible decisions, how it will be verified, existing patterns and rules, and unknowns and prototypes. Placeholders such as TBD and TODO do not count. With no flags and a terminal, `ratchet brief` prompts for the eight answers; otherwise it stays non-interactive so an agent can fill the file.
+
+A contract can lock the brief by hash:
+
+```bash
+ratchet brief --check
+ratchet task start --role coder --goal "..." --scope "src/**" --verify "npm test" --require-brief
+```
+
+`check` and `done` refuse if the file disappears or changes. Accept an intended edit on the record:
+
+```bash
+ratchet amend --brief --reason "clarified the rollback constraint"
+```
+
+### No verify, no contract
+
+A non-read-only contract must resolve at least one verify command, from `--verify` or from the checks in `.ratchet/config.json`. `ratchet task start` and `ratchet run` refuse an empty list. They also refuse a command that cannot fail: `true`, `:`, `echo ...`, `printf ...`, `exit 0`, or whitespace. Read-only contracts (`--read-only`, or role `reviewer`/`scout`) are exempt because they do not claim to change the tree.
+
 ### Sessions and worker threads
 
 A contract can be bound to one harness session, making "one contract per thread" real:
@@ -133,9 +163,10 @@ Tests written inside a task change the check surface, so `check` and `done` refu
 
 ```bash
 ratchet amend --reason "added assertions for the retry path"
+ratchet amend --brief --reason "clarified the rollback constraint"
 ```
 
-The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract the caller owns (a manual contract, or the caller's own `--session`) and records the old one as abandoned. It never abandons another session's contract.
+The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. A requirements brief locked with `--require-brief` uses the same rule through `--brief`. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract the caller owns (a manual contract, or the caller's own `--session`) and records the old one as abandoned. It never abandons another session's contract.
 
 A hard rule blocked a legitimate operation? A human can approve one for the live contract, on the record:
 
@@ -219,14 +250,15 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | Command | Does |
 |---|---|
 | `ratchet init` | Detect checks, write `.ratchet/config.json` and `rules.tsv` |
+| `ratchet brief` | Requirements intake: `--init` writes the template, `--check` validates it, `--from <file>` renders JSON or Markdown answers; no flags prompts only on a terminal |
 | `ratchet install` | Install adapters and skills for one or more harnesses |
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract (optionally `--session`), its age, every live contract in the checkout, stranded runs, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract and marks it abandoned |
-| `ratchet task status` | Show scope, budgets, and check state |
-| `ratchet sandbox` | Run a command under the live contract's write fence: `ratchet sandbox -- <command...>` |
-| `ratchet prompt` | Render the contract brief to inject into a system prompt |
+| `ratchet task start` | Write a contract and make it current; `--session <id>` binds it to a thread; `--require-brief` locks a valid `.ratchet/requirements.md`; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract the caller owns and marks it abandoned |
+| `ratchet task status` | Show scope, budgets, check state, and session (`--session <id>` resolves the thread's contract) |
+| `ratchet task bind` | Attach a worker `--session` to the lead's contract (`--run <id>` or `--lead <session-id>`); the worker inherits the boundary |
+| `ratchet prompt` | Render the contract brief to inject into a system prompt (`--session <id>`) |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, then the configured architecture boundary; save evidence (`--session <id>`) |
 | `ratchet hook pre-commit` | Refuse staged paths outside scope or runtime state, then run the contract's verify commands |
@@ -236,7 +268,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet ci` | On-demand CI status for a run's commit (or `HEAD`) through an authenticated `gh`; cached per commit; `unknown` is not fatal |
 | `ratchet arch` | Check declared import boundaries and cycles; not a design review |
 | `ratchet done` | Refuse without passing evidence; write `result.json`; `--session <id>` closes that thread's contract even when `current` names another |
-| `ratchet amend` | Re-baseline the locked check surface for the lead's contract; `--session <id>`; `--reason` is required and recorded |
+| `ratchet amend` | Re-baseline the locked check surface (`--brief` for the requirements brief) for the lead's contract; `--session <id>`; `--reason` is required and recorded |
 | `ratchet abandon` | Close the live contract, a session's contract (`--session <id>`), or a stranded one (`--run <id>`); `--reason` is required and recorded |
 | `ratchet approve` | Allow one operational hard rule (`force-push`, `hard-reset`, `git-clean`) for the lead's contract; `--session <id>`; `--reason` is required and recorded |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
@@ -245,7 +277,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **353 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **342 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
@@ -268,6 +300,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 ```text
 .ratchet/
   config.json
+  requirements.md            requirements intake; hash-locked by task start --require-brief
   rules.tsv                  rule -> layer -> enforcer -> proof
   install.json               adapters installed from this repo
   current                    last started run id; CLI fallback, not ownership
@@ -284,7 +317,7 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, session-bound contracts and worker aliases, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, on-demand CI evidence, import-boundary checks, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, session-bound contracts and worker aliases, requirements intake and brief locking, the no-verify/no-op refusal, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
 
 Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 

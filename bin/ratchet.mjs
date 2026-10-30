@@ -42,6 +42,8 @@ import {
 } from "../lib/contract.mjs";
 import { decide, loadState, record } from "../lib/decide.mjs";
 import { runChecks, saveChecks } from "../lib/checks.mjs";
+import { BRIEF_FILE, QUESTIONS, parseAnswers, renderBrief, scaffoldBrief, validateBrief } from "../lib/brief.mjs";
+import { verifyProblem } from "../lib/verify.mjs";
 import { EventError, appendEvent, parseEvent } from "../lib/events.mjs";
 import { evaluateStop } from "../lib/stop.mjs";
 import { runPostChecks } from "../lib/post-checks.mjs";
@@ -77,7 +79,7 @@ import { codexHome, findRatchetHooks, hookTrustHash, readTrustHash } from "../li
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
   "user", "project", "yes", "dry-run", "global", "pstack", "bend", "require-clean",
-  "ci",
+  "require-brief", "brief", "init",
 ]);
 
 
@@ -147,6 +149,84 @@ function splitGlobs(values) {
     .flatMap((value) => String(value).split(","))
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function shortHash(hash) {
+  return hash ? String(hash).slice(0, 12) : "none";
+}
+
+/** Resolve the verify commands for a new task contract. */
+function taskVerify(args, config) {
+  if (args.one("verify") === true) {
+    fail('--verify needs a command. Example: --verify "npm test"');
+  }
+  if (args.all("verify").length) return args.all("verify");
+  return [
+    ...(config.checks ?? []).map((check) => check.cmd),
+    ...(args.has("bend") ? [`${process.env.BEND_BIN || "bend"} PROOF.bend --check-only`] : []),
+  ];
+}
+
+function taskReadOnly(args) {
+  const role = String(args.one("role", "coder"));
+  return args.has("read-only") || role === "reviewer" || role === "scout";
+}
+
+/** A refusal has to name the command that fixes it, not only the rule. */
+function verifyRefusal(problem, { command, readOnly = null }) {
+  if (problem.kind === "noop") {
+    const list = problem.noop.map((cmd) => `"${cmd}"`).join(", ");
+    return [
+      `REFUSED: verify command cannot fail: ${list}`,
+      "A command that is only true, :, echo, printf, exit 0, or whitespace certifies nothing.",
+      `Pass a real command instead: ${command}`,
+      "or add checks to .ratchet/config.json (ratchet init detects them).",
+      ...(readOnly ? [readOnly] : []),
+    ].join("\n");
+  }
+  return [
+    "REFUSED: no verify command.",
+    "A non-read-only contract must run at least one command that can fail.",
+    `Pass one: ${command}`,
+    "or add checks to .ratchet/config.json (ratchet init detects them).",
+    ...(readOnly ? [readOnly] : []),
+  ].join("\n");
+}
+
+/**
+ * check and done re-read the requirements file the contract was started with.
+ * A disappearing or edited brief refuses the same way a changed check surface
+ * does; `ratchet amend --brief` is the explicit, recorded way to accept it.
+ */
+function assertBriefIntact(root, contract) {
+  if (!contract.requireBrief) return;
+  const brief = validateBrief(root);
+  if (!brief.exists) {
+    fail(
+      [
+        `REFUSED: this contract requires ${BRIEF_FILE}, but the file is missing.`,
+        "Restore it (for example: git checkout -- .ratchet/requirements.md),",
+        'or close the contract without claiming success: ratchet abandon --reason "requirements file removed"',
+      ].join("\n"),
+    );
+  }
+  if (!brief.ok) {
+    fail(
+      [
+        `REFUSED: ${BRIEF_FILE} is missing required sections: ${brief.missing.join(", ")}`,
+        "Fill them in, then run: ratchet brief --check",
+      ].join("\n"),
+    );
+  }
+  if (brief.hash !== contract.requirementsHash) {
+    fail(
+      [
+        `REFUSED: ${BRIEF_FILE} changed since ${contract.id} started (${shortHash(contract.requirementsHash)} -> ${shortHash(brief.hash)}).`,
+        'If the change is intended, run: ratchet amend --brief --reason "..."',
+        "Otherwise restore the file before check/done.",
+      ].join("\n"),
+    );
+  }
 }
 
 function requireConfig(root) {
@@ -224,9 +304,127 @@ function commandInit(args) {
   out("");
   out("next:");
   out(`  ratchet install --project --harness pi,claude,opencode,t3`);
-  out(`  ratchet task start --role coder --goal "what you are changing" --scope "src/**"`);
+  out(`  ratchet brief --init     # optional intake; task start --require-brief locks it`);
+  out(`  ratchet task start --role coder --goal "what you are changing" --scope "src/**" --verify "npm test"`);
   out("  ratchet check");
   out("  ratchet done");
+}
+
+/**
+ * Requirements intake. The file is the artifact; flags let an agent work
+ * non-interactively. Interactive prompts only run when stdin is a terminal.
+ */
+async function commandBrief(args) {
+  const root = findRoot(process.cwd());
+  const target = path.join(root, BRIEF_FILE);
+
+  if (args.has("init")) {
+    if (fs.existsSync(target) && !args.has("force")) {
+      fail(
+        [
+          `${BRIEF_FILE} already exists at ${target}.`,
+          "Validate it with: ratchet brief --check",
+          "Replace it with the empty template: ratchet brief --init --force",
+        ].join("\n"),
+      );
+    }
+    writeText(target, scaffoldBrief());
+    out(`brief:  ${target}`);
+    out("next:   fill every section, then run: ratchet brief --check");
+    return;
+  }
+
+  if (args.has("from")) {
+    const source = flagValue(args, "from");
+    if (!source) fail("brief --from needs a file path. Example: ratchet brief --from answers.json");
+    const file = path.resolve(root, source);
+    let raw = "";
+    try {
+      raw = fs.readFileSync(file, "utf8");
+    } catch {
+      fail(`cannot read answers file: ${file}. Write it, or run: ratchet brief --init`);
+    }
+    let answers;
+    try {
+      answers = parseAnswers(raw, file);
+    } catch (err) {
+      fail(
+        [
+          `brief: ${err.message}`,
+          'Expected a JSON object keyed by question key or heading, or Markdown with "## <heading>" sections.',
+          "Run: ratchet brief --init to see the headings.",
+        ].join("\n"),
+      );
+    }
+    const existed = fs.existsSync(target);
+    writeText(target, renderBrief(answers));
+    const check = validateBrief(root);
+    out(`brief:  ${target}${existed ? " (replaced)" : ""}`);
+    if (!check.ok) {
+      out(`missing: ${check.missing.join(", ")}`);
+      out("next:   fill them, then run: ratchet brief --check");
+      return;
+    }
+    out(`hash:   ${check.hash}`);
+    out("valid. Start the contract with: ratchet task start --require-brief ...");
+    return;
+  }
+
+  if (args.has("check")) {
+    const result = validateBrief(root);
+    if (!result.exists) {
+      fail(`no ${BRIEF_FILE} at ${target}. Run: ratchet brief --init`);
+    }
+    if (!result.ok) {
+      fail(
+        [
+          `brief is incomplete: ${result.missing.join(", ")}`,
+          `Fill ${BRIEF_FILE}, then run: ratchet brief --check`,
+        ].join("\n"),
+      );
+    }
+    out(`brief: valid  ${target}`);
+    out(`hash:  ${result.hash}`);
+    return;
+  }
+
+  if (!process.stdin.isTTY) {
+    fail(
+      [
+        "brief is non-interactive without a mode.",
+        "Run: ratchet brief --init  (then fill the file and run: ratchet brief --check)",
+        "or render an answers file: ratchet brief --from answers.json",
+      ].join("\n"),
+    );
+  }
+
+  if (fs.existsSync(target) && !args.has("force")) {
+    fail(
+      [
+        `${BRIEF_FILE} already exists at ${target}.`,
+        "Validate it with: ratchet brief --check",
+        "Answer again and replace it: ratchet brief --force",
+      ].join("\n"),
+    );
+  }
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answers = {};
+  try {
+    for (const question of QUESTIONS) {
+      const answer = (await rl.question(`${question.heading}\n${question.prompt}\n> `)).trim();
+      answers[question.key] = answer;
+    }
+  } finally {
+    rl.close();
+  }
+  writeText(target, renderBrief(answers));
+  const check = validateBrief(root);
+  out(`brief:  ${target}`);
+  if (check.ok) {
+    out("valid. Start the contract with: ratchet task start --require-brief ...");
+  } else {
+    out(`missing: ${check.missing.join(", ")}. Fill them, then run: ratchet brief --check`);
+  }
 }
 
 /** The lead session on a contract. Empty for a manual contract. */
@@ -316,6 +514,7 @@ function commandTask(args) {
     out(`role:    ${contract.role}${contract.readOnly ? " (read-only)" : ""}`);
     out(`session: ${describeSession(contract)}`);
     out(`scope:   ${contract.scope.join(", ") || "(none)"}`);
+    if (contract.requireBrief) out(`brief:   ${BRIEF_FILE} (${shortHash(contract.requirementsHash)})`);
     out(`budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`);
     out(`checks:  ${checks ? (checks.ok ? "pass" : "fail") + " (" + checks.ranAt + ")" : "not run"}`);
     return;
@@ -397,22 +596,67 @@ function commandTask(args) {
     );
   }
 
-  // A contract the caller owns may be replaced on the record. This is how
-  // --force keeps working without letting one session abandon another's run.
-  if (owned.length) {
-    if (!args.has("force")) {
-      const first = owned[0];
+  // A live contract the caller does not force away is the first refusal: it
+  // names the owner and the two ways out.
+  if (owned.length && !args.has("force")) {
+    const first = owned[0];
+    fail(
+      [
+        `a contract is still live: ${first.id}`,
+        sessionId ? `finish it with: ratchet done --session ${sessionId}` : "finish it with: ratchet done",
+        sessionId
+          ? `or close it with: ratchet abandon --session ${sessionId} --reason "..."`
+          : 'or close it with: ratchet abandon --reason "..."',
+        "or replace it with: ratchet task start --force ... (records the old one as abandoned)",
+      ].join("\n"),
+    );
+  }
+
+  // Validate the contract's substance before --force can abandon the old one.
+  // A contract without a check that can fail certifies nothing, and a required
+  // brief must exist and be complete before its hash can be locked.
+  const preflightReadOnly = taskReadOnly(args);
+  const preflightVerify = taskVerify(args, config);
+  if (!preflightReadOnly) {
+    const problem = verifyProblem(preflightVerify);
+    if (problem) {
+      fail(
+        verifyRefusal(problem, {
+          command: 'ratchet task start --role coder --goal "..." --scope "src/**" --verify "npm test"',
+          readOnly:
+            'Read-only is exempt: ratchet task start --read-only --role reviewer --goal "..." --scope "src/**"',
+        }),
+      );
+    }
+  }
+  const requireBrief = args.has("require-brief");
+  let requirementsHash = null;
+  if (requireBrief) {
+    const brief = validateBrief(root);
+    if (!brief.exists) {
       fail(
         [
-          `a contract is still live: ${first.id}`,
-          sessionId ? `finish it with: ratchet done --session ${sessionId}` : "finish it with: ratchet done",
-          sessionId
-            ? `or close it with: ratchet abandon --session ${sessionId} --reason "..."`
-            : 'or close it with: ratchet abandon --reason "..."',
-          "or replace it with: ratchet task start --force ... (records the old one as abandoned)",
+          `REFUSED: --require-brief needs ${BRIEF_FILE}.`,
+          "Run: ratchet brief --init",
+          "Fill every section, then: ratchet brief --check",
+          "Then retry this start.",
         ].join("\n"),
       );
     }
+    if (!brief.ok) {
+      fail(
+        [
+          `REFUSED: ${BRIEF_FILE} is incomplete: ${brief.missing.join(", ")}`,
+          "Fill those sections, then run: ratchet brief --check",
+        ].join("\n"),
+      );
+    }
+    requirementsHash = brief.hash;
+  }
+
+  // A contract the caller owns may be replaced on the record. This is how
+  // --force keeps working without letting one session abandon another's run.
+  if (owned.length) {
     for (const contract of owned) {
       abandonLive(root, contract, "superseded by a new contract (task start --force)");
       out(`superseded: ${contract.id} (abandoned)`);
@@ -422,7 +666,7 @@ function commandTask(args) {
   const goal = String(args.one("goal", args.positional.slice(1).join(" ")) || "").trim();
   if (!goal) fail("task start needs --goal \"...\"");
   const role = String(args.one("role", "coder"));
-  const readOnly = args.has("read-only") || role === "reviewer" || role === "scout";
+  const readOnly = taskReadOnly(args);
   const scope = args.all("scope").length ? splitGlobs(args.all("scope")) : config.defaults?.scope ?? [];
   for (const value of args.all("scope")) {
     if (/\s/.test(String(value).trim()) && !String(value).includes(",")) {
@@ -459,16 +703,14 @@ function commandTask(args) {
   const scoped = gates.length
     ? [...new Set([...scope, ...gates.map((gate) => gate.artifact), ...(args.has("bend") ? ["PROOF.bend"] : [])])]
     : scope;
-  const defaultVerify = [
-    ...(config.checks ?? []).map((c) => c.cmd),
-    ...(args.has("bend") ? [`${process.env.BEND_BIN || "bend"} PROOF.bend --check-only`] : []),
-  ];
-  const verify = args.all("verify").length ? args.all("verify") : defaultVerify;
+  const verify = taskVerify(args, config);
   const contract = createContract(root, {
     goal,
     role,
     readOnly,
     requireClean,
+    requireBrief,
+    requirementsHash,
     scope: scoped,
     deny,
     gates,
@@ -486,6 +728,7 @@ function commandTask(args) {
   out(`budgets: ${contract.budgets.maxFiles} files, ${contract.budgets.maxWrites} writes`);
   if (contract.gates?.length) out(`gates:   ${contract.gates.map((g) => g.artifact).join(", ")}`);
   if (contract.requireClean) out("clean:   required (tracked changes must be committed)");
+  if (contract.requireBrief) out(`brief:   ${BRIEF_FILE} (${shortHash(contract.requirementsHash)})`);
   out(`verify:  ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
   const nowLive = liveRuns(root);
   if (nowLive.length > 1) {
@@ -688,6 +931,7 @@ function commandCheck(args) {
   if (contract) {
     const dirty = cleanViolation(root, contract);
     if (dirty) fail(dirty);
+    assertBriefIntact(root, contract);
   }
   if (contract?.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
@@ -770,6 +1014,7 @@ function commandDone(args) {
   const sessionId = flagValue(args, "session");
   const contract = requireContract(root, sessionId);
   assertLeadOwner(contract, sessionId, "done");
+  assertBriefIntact(root, contract);
   const dirty = cleanViolation(root, contract);
   if (dirty) fail(dirty);
   if (contract.checksLock) {
@@ -802,8 +1047,23 @@ function commandDone(args) {
   const result = resultFor(root, contract, checks, {
     verdict: "done",
     scopeAudit: { checkedAt: new Date().toISOString(), changed, outside },
+    ...(contract.requireBrief
+      ? {
+          requirements: {
+            file: BRIEF_FILE,
+            hash: contract.requirementsHash,
+            amendments: (contract.requirementsAmendments ?? []).map((entry) => ({
+              at: entry.at,
+              reason: entry.reason,
+              from: entry.from,
+              to: entry.to,
+            })),
+          },
+        }
+      : {}),
   });
   const amendments = contract.checkAmendments ?? [];
+  const briefAmendments = contract.requirementsAmendments ?? [];
   const approvals = contract.approvals ?? [];
   writeJson(path.join(runDir(root, contract.id), "result.json"), result);
   clearCurrent(root, contract.id);
@@ -811,6 +1071,9 @@ function commandDone(args) {
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
   out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
   if (amendments.length) out(`amended: ${amendments.map((a) => a.reason).join("; ")}`);
+  if (briefAmendments.length) {
+    out(`requirements amended: ${briefAmendments.map((a) => a.reason).join("; ")}`);
+  }
   if (approvals.length) out(`approved: ${approvals.map((a) => `${a.rule} (${a.reason})`).join("; ")}`);
   out(`changed: ${result.git.changed ?? "?"} file(s)`);
   if (!contract.readOnly && result.counts.writes === 0) {
@@ -827,10 +1090,10 @@ function commandDone(args) {
 }
 
 /**
- * Re-baseline the locked check surface for the live contract, on the record.
- * Tests written inside a task legitimately change the check files; refusing
- * forever forces a second contract and strands the first. The amendment keeps
- * the audit trail honest: what moved, why, and when.
+ * Re-baseline a lock for the live contract, on the record. Tests written inside
+ * a task legitimately change the check files, and a requirements brief can be
+ * corrected; refusing forever forces a second contract and strands the first.
+ * The amendment keeps the audit trail honest: what moved, why, and when.
  */
 function commandAmend(args) {
   const root = findRoot(process.cwd());
@@ -838,7 +1101,57 @@ function commandAmend(args) {
   const contract = requireContract(root, sessionId);
   assertLeadOwner(contract, sessionId, "amend");
   const reason = String(args.one("reason", "")).trim();
-  if (!reason) fail('amend needs --reason "..." so the audit trail records why the check surface moved');
+  if (!reason) {
+    fail(
+      [
+        'amend needs --reason "..." so the audit trail records why the lock moved.',
+        'Check surface: ratchet amend --reason "..."',
+        'Requirements brief: ratchet amend --brief --reason "..."',
+      ].join("\n"),
+    );
+  }
+
+  if (args.has("brief")) {
+    if (!contract.requireBrief) {
+      out("this contract does not lock a requirements brief: nothing to amend");
+      return;
+    }
+    const brief = validateBrief(root);
+    if (!brief.exists) {
+      fail(
+        [
+          `no ${BRIEF_FILE} to amend. Restore it,`,
+          'or close the contract without claiming success: ratchet abandon --reason "..."',
+        ].join("\n"),
+      );
+    }
+    if (!brief.ok) {
+      fail(
+        [
+          `brief is incomplete: ${brief.missing.join(", ")}`,
+          "Fill those sections, then run: ratchet brief --check",
+        ].join("\n"),
+      );
+    }
+    if (brief.hash === contract.requirementsHash) {
+      out("no requirements change: nothing to amend");
+      return;
+    }
+    const amendment = {
+      at: new Date().toISOString(),
+      reason,
+      from: contract.requirementsHash,
+      to: brief.hash,
+    };
+    contract.requirementsHash = brief.hash;
+    contract.requirementsAmendments = [...(contract.requirementsAmendments ?? []), amendment];
+    saveContract(root, contract);
+    out(`AMENDED  ${contract.id}`);
+    out(`  requirements: ${shortHash(amendment.from)} -> ${shortHash(amendment.to)}`);
+    out(`lock: ${contract.requirementsAmendments.length} requirements amendment(s) recorded in the contract`);
+    return;
+  }
+
   if (!contract.checksLock) fail("this contract has no locked check surface to amend");
 
   const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
@@ -929,10 +1242,25 @@ function contractForRun(root, args, command) {
     : Array.isArray(auto.scope)
       ? auto.scope
       : config.defaults?.scope ?? [];
-  if (!scope.length) fail("run needs --scope, or auto.scope in .ratchet/config.json");
+  if (!scope.length) {
+    fail(
+      'run needs --scope, or auto.scope in .ratchet/config.json. Example: ratchet run --scope "src/**" --verify "npm test" -- <command...>',
+    );
+  }
+  if (args.one("verify") === true) {
+    fail('--verify needs a command. Example: ratchet run --scope "src/**" --verify "npm test" -- <command...>');
+  }
   const verify = args.all("verify").length
     ? args.all("verify")
     : (config.checks ?? []).map((check) => check.cmd);
+  const problem = verifyProblem(verify);
+  if (problem) {
+    fail(
+      verifyRefusal(problem, {
+        command: 'ratchet run --goal "..." --scope "src/**" --verify "npm test" -- <command...>',
+      }),
+    );
+  }
   const requireClean = args.has("require-clean");
   if (requireClean) {
     const dirty = cleanViolation(root, { id: "a new run", requireClean: true });
@@ -1858,7 +2186,8 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--require-clean] [--pstack] [--bend] [--force]
+  ratchet brief [--init] [--check] [--from <file>] [--force]  # requirements intake
+  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--require-brief] [--require-clean] [--pstack] [--bend] [--force]
   ratchet task status [--session <id>]
   ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]
   ratchet report [--session <id>] [--json]    # allow/deny trail for the current run
@@ -1871,12 +2200,11 @@ usage:
   ratchet hook                                # normalized lifecycle event on stdin
   ratchet hook pre-commit                     # staged paths vs contract scope, then verify
   ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] [--require-clean] -- <command...>
-  ratchet sandbox -- <command...>             # run under the live contract's write fence
-  ratchet check [--timeout 120000]
-  ratchet done
-  ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
-  ratchet abandon --reason "..." [--run <id>]  # close the live contract, or one stranded run
-  ratchet approve --rule force-push --reason "..."  # allow one operational hard rule, on the record
+  ratchet check [--session <id>] [--timeout 120000]
+  ratchet done [--session <id>]
+  ratchet amend [--session <id>] [--brief] --reason "..."  # re-baseline the locked check surface or requirements brief, on the record
+  ratchet abandon --reason "..." [--run <id> | --session <id>]  # close the live contract, or one stranded run
+  ratchet approve [--session <id>] --rule force-push --reason "..."  # allow one operational hard rule, on the record
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
@@ -1891,6 +2219,11 @@ session; task bind attaches a worker session to the lead's contract. --force
 replaces the caller's own contract, never another session's. More than one
 session contract may share a checkout, but git still has one index per
 checkout: use one worktree per lead when file overlap is possible.
+
+verify: a non-read-only contract needs a command that can fail. true, :, echo,
+printf, exit 0, and whitespace are refused. Read-only contracts are exempt.
+brief:  --require-brief locks .ratchet/requirements.md by hash; accept an
+intended edit with: ratchet amend --brief --reason "..."
 
 layers: code > types > lint > CI > tests > prose. A rule that nothing enforces is a wish.`);
 }
@@ -1912,6 +2245,9 @@ if (args.has("help") || !cmd || cmd === "help") {
 switch (cmd) {
   case "init":
     commandInit(args);
+    break;
+  case "brief":
+    await commandBrief(args);
     break;
   case "task":
     commandTask(args);
