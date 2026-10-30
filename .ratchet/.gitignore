@@ -3,3 +3,4 @@ last-check.json
 events.jsonl
 current
 install.json
+ci-cache.json

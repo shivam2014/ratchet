@@ -15,9 +15,12 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | Check runner | `test/checks.test.mjs` | pass, fail, timeout, empty, failure context |
 | Filesystem helpers | `test/fsx.test.mjs` | root discovery, relative/absolute paths, JSON round trip, slug, timestamp |
 | CLI end to end | `test/e2e.test.mjs` | init, contract, guard allow/deny, no contract, budget, audit, sync, install opencode/claude/codex, Claude hook format, dry run |
+| Digest and evidence | `test/digest.test.mjs` | v1 count/thread behavior, v2 worker fixes vs decisions, exceptions with run ids, CI failure injection, `--root` rollups, next commands |
+| CI status | `test/ci.test.mjs` | pass/fail/running/unknown mapping, missing `gh`, unauthenticated `gh`, cache TTL, commit resolution, CLI exit codes |
+| Architecture boundaries | `test/architecture.test.mjs` | forbidden import caught, allowed import passes, require/export-from edges, cycles, no config no-op, `ratchet check` integration |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 235 tests, all passing.
+Total: 352 tests, all passing.
 
 ```bash
 npm test

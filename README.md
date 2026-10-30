@@ -8,7 +8,7 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node 20+](https://img.shields.io/badge/node-20%2B-brightgreen.svg)](package.json)
 
-Ratchet is a harness-neutral contract and verification gate for coding agents. It runs as a small Node CLI with no model, no API key and no network call.
+Ratchet is a harness-neutral contract and verification gate for coding agents. It runs as a small Node CLI with no model, no API key, and no network call in the enforcement path. `ratchet ci` is the one on-demand exception: it reads an authenticated `gh` for one commit and caches the answer.
 
 ## See it work
 
@@ -147,7 +147,24 @@ Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval i
 
 `--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
 
-The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest --thread <session-or-alias>` narrows the whole report to one thread's contracts. `digest` exits 1 when something needs a human. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
+The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest --thread <session-or-alias>` narrows the whole report to one thread's contracts. Digest v2 separates the worker-fix queue (`attention`) from `decisions` — amendments, approvals, out-of-scope runs, failing checks, and CI failures — and `exceptions`, the same items with run ids and a short reason. Every decision names the next command. `digest --root <path>` is repeatable and prints one rollup per project; there is no global registry. `digest` exits 1 when a worker fix or a human decision is outstanding. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
+
+CI is evidence on demand, not a background ingest. `ratchet ci [--run <id>]` asks an authenticated `gh` for the run's commit (or `HEAD`) and prints `pass`, `fail`, `running`, or `unknown`. `evidence --ci` attaches that status to one certificate, and `digest --ci` asks for the current or latest run only, never every row. The answer is cached per commit in `.ratchet/ci-cache.json` for two minutes, so repeated reports do not hammer the API. A missing `gh`, a signed-out account, or a network failure is `unknown` with a reason; it never turns a run red or fails the command.
+
+### Architecture boundaries
+
+An optional config block declares import edges the repo does not want:
+
+```json
+{
+  "architecture": {
+    "forbidden": [{ "from": "src/ui/**", "to": "src/core/**", "reason": "ui imports core internals" }],
+    "cycles": true
+  }
+}
+```
+
+`ratchet arch` scans `.js`, `.mjs`, `.cjs`, `.ts`, and `.tsx` import/require/export-from specifiers, resolves relative imports, and reports an edge when the importer matches `from` and the resolved target matches `to`. `cycles: true` reports import cycles among those files. When `architecture` exists, `ratchet check` runs this after the verify commands and a violation fails the check. This is a boundary check, not a design judge: it sees only edges the config names and cycles, not layering quality, naming, or intent.
 
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`; `ratchet abandon --session <id>` closes one session's contract.
 
@@ -211,11 +228,13 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet sandbox` | Run a command under the live contract's write fence: `ratchet sandbox -- <command...>` |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
-| `ratchet check` | Run the contract's verification commands, save evidence (`--session <id>`) |
+| `ratchet check` | Run the contract's verification commands, then the configured architecture boundary; save evidence (`--session <id>`) |
 | `ratchet hook pre-commit` | Refuse staged paths outside scope or runtime state, then run the contract's verify commands |
 | `ratchet report` | Show the allow/deny trail for a run; `--session <id>`; `--json` for machine output |
-| `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--run <id>`, `--session <id>`, `--json` |
-| `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, exceptions; `--thread <session-or-alias>` scopes it; exits 1 when something needs a human |
+| `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--run <id>`, `--session <id>`, `--ci`, `--json` |
+| `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, worker fixes, decisions, exceptions; `--thread <session-or-alias>` scopes it; `--root <path>` is repeatable; `--ci` adds the current run's cached CI status; exits 1 when a fix or decision is outstanding |
+| `ratchet ci` | On-demand CI status for a run's commit (or `HEAD`) through an authenticated `gh`; cached per commit; `unknown` is not fatal |
+| `ratchet arch` | Check declared import boundaries and cycles; not a design review |
 | `ratchet done` | Refuse without passing evidence; write `result.json`; `--session <id>` closes that thread's contract even when `current` names another |
 | `ratchet amend` | Re-baseline the locked check surface for the lead's contract; `--session <id>`; `--reason` is required and recorded |
 | `ratchet abandon` | Close the live contract, a session's contract (`--session <id>`), or a stranded one (`--run <id>`); `--reason` is required and recorded |
@@ -226,7 +245,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **337 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **352 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
@@ -239,7 +258,9 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 - **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope. A worker only joins a lead through an explicit `ratchet task bind`.
 - **Scope is audited, not inferred.** The guard reads explicit write paths and shell hints; `done` compares the working tree with git. A write the classifier missed still refuses the close. This is what keeps the gate stable as shells, interpreters, and tools change.
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
-- **Policy is not a sandbox by default.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The optional write fence (`sandbox.enabled`) makes bash a kernel boundary on macOS and Linux when the adapter can rewrite the command; it is off by default and does not cover write tools, reads, network, MCP, or subagents. The authority is still git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
+- **CI is evidence on demand.** The CLI does not poll or ingest workflows. When asked, it reads one commit's status through `gh`, caches it briefly, and reports `unknown` rather than guessing.
+- **Boundaries are declared, not inferred.** `architecture.forbidden` and `architecture.cycles` make a narrow, deterministic check. It catches the edges the repo names; it does not claim to judge design.
+- **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
 - **One rule table.** `ratchet audit` fails when a rule claims a machine layer but names no enforcer or no proof. A check that has never failed on a real past mistake is a guess.
 
 ## State
@@ -251,6 +272,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
   install.json               adapters installed from this repo
   current                    last started run id; CLI fallback, not ownership
   events.jsonl               decisions made with no live contract
+  ci-cache.json              on-demand gh status per commit, short TTL, gitignored
   runs/<id>/
     contract.json
     events.jsonl             every allow/deny, append-only
@@ -262,7 +284,7 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, the optional bash write fence, and CI. The default path is still an explicit `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, session-bound contracts and worker aliases, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, on-demand CI evidence, import-boundary checks, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
 
 Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 

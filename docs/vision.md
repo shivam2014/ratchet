@@ -160,6 +160,14 @@ The adapters are thin. They normalize one harness event, call one CLI command, a
 
 A hook is policy, not a sandbox. It can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The physical layers are a container or read-only checkout, branch protection, CODEOWNERS, and required checks. The optional bash write fence (`sandbox.enabled`) is the exception: it is a kernel boundary for commands the adapter can rewrite, and it still leaves write tools, reads, network, MCP, and subagents outside. Ratchet makes the cheap path correct and the expensive path authoritative. It does not pretend a hook is physics.
 
+### CI is evidence on demand
+
+Ratchet does not ingest CI. A webhook or a poller would add a credential and a second source of truth. Instead `ratchet ci` asks an authenticated `gh` for one commit, `evidence --ci` attaches that answer to a certificate, and `digest --ci` asks for the current or latest run only. Answers are cached per commit for a short TTL. `unknown` — no `gh`, no auth, no workflow run, or a network failure — is reported as unknown, never as a pass or a failure.
+
+### Architecture boundaries are a check, not a judge
+
+`architecture.forbidden` names importer and target globs; `architecture.cycles` turns on cycle detection for the scanned JS/TS files. `ratchet arch`, and `ratchet check` when the block exists, fail on a declared violation. The check is deterministic and narrow: it does not score layering, naming, or design intent. Ambiguous architecture decisions stay with a reviewer. The check only makes a boundary the repo already chose impossible to cross silently.
+
 ### Components
 
 | Component | Job | Fails closed? |
@@ -391,3 +399,6 @@ The important metric is not "how often did the model follow the skill?" It is "h
 | 2026-10-20 | Check surface is hashed and canaried | A model that can weaken the check can defeat the gate |
 | 2026-10-20 | ACP proxy is the broadest universal adapter; native hooks for depth | No finalized hook standard; ACP's draft proxy RFD explicitly aims to subsume hooks |
 | 2026-10-20 | ACP is a breadth adapter, not the first build | Proxy RFD draft; current harnesses have direct hooks/control planes |
+| 2026-10-31 | CI status is on demand and cached, not ingested | A webhook needs a credential and a second source of truth; a per-commit query is enough for evidence |
+| 2026-10-31 | Architecture checks cover declared edges and cycles only | A deterministic boundary check can fail; a design score cannot be defended |
+| 2026-10-31 | Digest separates worker fixes from human decisions | A single red/green rollup hides which actor has to move next |

@@ -51,6 +51,8 @@ import { preCommitReport } from "../lib/precommit.mjs";
 import { cleanViolation } from "../lib/clean.mjs";
 import { buildEvidence, evidenceClean } from "../lib/evidence.mjs";
 import { buildDigest } from "../lib/digest.mjs";
+import { ciStatus, commitForRun } from "../lib/ci.mjs";
+import { architectureCheck } from "../lib/architecture.mjs";
 import { APPROVABLE_RULES } from "../lib/classify.mjs";
 import { detectSandbox, quote as shellQuote, runSandboxed } from "../lib/sandbox.mjs";
 import { routePrompt } from "../lib/route.mjs";
@@ -75,6 +77,7 @@ import { codexHome, findRatchetHooks, hookTrustHash, readTrustHash } from "../li
 const BOOLEAN = new Set([
   "force", "read-only", "json", "check", "install", "all", "help", "version",
   "user", "project", "yes", "dry-run", "global", "pstack", "bend", "require-clean",
+  "ci",
 ]);
 
 
@@ -707,7 +710,21 @@ function commandCheck(args) {
     }
   }
   if (report.empty) out("no checks ran");
-  process.exit(report.ok ? 0 : 1);
+  // Boundary check, after the repo's own commands. A config without
+  // `architecture` is a no-op, so existing repos see no change.
+  const architecture = config.architecture ? architectureCheck(root, config) : null;
+  if (architecture) {
+    out(`ARCH  ${architecture.files} file(s), ${architecture.violations.length} violation(s)`);
+    for (const violation of architecture.violations) {
+      out(`FAIL  ${violation.rule}  ${violation.from} -> ${violation.to}  (${violation.reason})`);
+    }
+    if (!architecture.ok) {
+      out(
+        "next: fix the import, or update architecture rules in .ratchet/config.json; then run: ratchet check",
+      );
+    }
+  }
+  process.exit(report.ok && (architecture?.ok ?? true) ? 0 : 1);
 }
 
 function gitFacts(root) {
@@ -1608,7 +1625,12 @@ function commandEvidence(args) {
     ? loadRun(root, id)
     : contractForSession(root, flagValue(args, "session")) ?? latestRun(root);
   if (!contract) fail("No run found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
-  const evidence = buildEvidence(root, contract);
+  let ci = null;
+  if (args.has("ci")) {
+    const commit = commitForRun(root, contract);
+    ci = { recorded: true, commit, ...ciStatus(root, commit) };
+  }
+  const evidence = buildEvidence(root, contract, { ci });
   const clean = evidenceClean(evidence);
   if (args.has("json")) {
     out(JSON.stringify({ ...evidence, clean }, null, 2));
@@ -1638,30 +1660,28 @@ function commandEvidence(args) {
   out(`guard:      ${evidence.guard.events} event(s), ${evidence.guard.writes ?? "?"} write(s)`);
   out(`exceptions: ${evidence.exceptions.amendments.length} amendment(s), ${evidence.exceptions.approvals.length} approval(s)`);
   out(`rules:      ${evidence.rules.configured ? `${evidence.rules.total} rule(s), ${evidence.rules.errors} error(s)` : "not configured"}`);
-  out("ci:         not recorded; git and CI remain the authority");
+  if (evidence.ci.recorded) {
+    out(`ci:         ${evidence.ci.state}  ${evidence.ci.workflow ?? "(no workflow)"}  ${evidence.ci.url ?? ""}`.trimEnd());
+    out(`  checked:  ${evidence.ci.checkedAt}  commit ${String(evidence.ci.commit ?? "").slice(0, 12)}`);
+    out(`  reason:   ${evidence.ci.reason}`);
+    if (evidence.ci.state === "fail" && evidence.ci.runId) {
+      out(`  next:     gh run view ${evidence.ci.runId} --log-failed`);
+    }
+  } else {
+    out("ci:         not recorded (ask on demand: ratchet evidence --ci)");
+  }
   if (!clean) out("NOTE: this run is not clean; do not present it as done.");
   process.exit(clean ? 0 : 1);
 }
 
-function commandDigest(args) {
-  const root = findRoot(process.cwd());
-  const thread = flagValue(args, "thread");
-  const digest = buildDigest(root, { limit: Number(args.one("limit", 30)), thread });
-  if (!digest.total) {
-    fail(
-      thread
-        ? `No runs for thread ${thread}. Start one with: ratchet task start --session ${thread} --role coder --goal "..." --scope "src/**"`
-        : "No runs found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"",
-    );
-  }
-  const healthy = digest.attention.length === 0;
-  if (args.has("json")) {
-    out(JSON.stringify({ ...digest, healthy }, null, 2));
-    process.exit(healthy ? 0 : 1);
-  }
-
+function renderDigest(digest, header) {
   const c = digest.counts;
-  out(`RATCHET DIGEST  last ${digest.total} run(s)${thread ? ` for thread ${thread}` : ""}`);
+  out(header);
+  if (!digest.total) {
+    out("runs:       0");
+    out('next:       ratchet task start --role coder --goal "..." --scope "src/**"');
+    return;
+  }
   out(`runs:       ${c.done} done · ${c.abandoned} abandoned · ${c.failed} failed · ${c.open} open`);
   out(`checks:     ${c.checksPass} pass · ${c.checksFail} fail · ${c.checksUnknown} unknown`);
   out(`scope:      ${c.outsideRuns} run(s) with outside changes`);
@@ -1670,14 +1690,165 @@ function commandDigest(args) {
     out(`history:    ${digest.history.blind} run(s) before guard wiring (not counted)`);
   }
   out(`exceptions: ${c.amendments} amendment(s) · ${c.approvals} approval(s)`);
+  if (digest.ci) {
+    const status = digest.ci.status ?? {};
+    const where = [status.workflow, status.url].filter(Boolean).join(" · ");
+    out(`ci:         ${status.state ?? "unknown"}${where ? ` · ${where}` : ""}  (run ${digest.ci.run})`);
+    if (status.reason) out(`            ${status.reason}`);
+  }
   out(`rules:      ${digest.rules.configured ? `${digest.rules.total} rule(s) · ${digest.rules.errors} error(s)` : "not configured"}`);
-  if (healthy) {
-    out("health:     no attention items");
-  } else {
-    out("needs attention:");
+  if (digest.attention.length) {
+    out("worker fixes:");
     for (const item of digest.attention) out(`  - ${item}`);
   }
+  if (digest.decisions.length) {
+    out("decisions:");
+    for (const decision of digest.decisions) {
+      const where = decision.run ? `[${decision.run}] ` : "";
+      out(`  - ${where}${decision.reason}`);
+      if (decision.next) out(`    next: ${decision.next}`);
+    }
+  }
+  if (digest.exceptions.length) {
+    out("exceptions:");
+    for (const exception of digest.exceptions) {
+      out(`  - ${exception.run}  ${exception.kind}  ${exception.reason}`);
+    }
+  }
+  if (!digest.attention.length && !digest.decisions.length) {
+    out("health:     no attention items");
+  }
+}
+
+/** CI for the current or latest run, scoped to --thread when it is given. */
+function digestCi(root, thread) {
+  const contract = contractForSession(root, null) ?? latestRun(root);
+  if (!contract) return null;
+  if (thread && !contractSessions(contract).includes(thread)) return null;
+  const commit = commitForRun(root, contract);
+  return { run: contract.id, commit, status: ciStatus(root, commit) };
+}
+
+function commandDigest(args) {
+  const thread = flagValue(args, "thread");
+  const limit = Number(args.one("limit", 30));
+  const requested = args
+    .all("root")
+    .flatMap((value) => String(value).split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  // No registry: `--root` is an explicit list of checkouts, defaulting to this
+  // one. A rollup per project keeps two unrelated repos from sharing a health
+  // verdict.
+  const roots = [...new Set((requested.length ? requested : [process.cwd()]).map((value) => {
+    const abs = path.resolve(value);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+      fail(`--root ${value} is not a directory. Pass a project path, for example: ratchet digest --root ../other-repo`);
+    }
+    return findRoot(abs);
+  }))];
+  const reports = roots.map((root) => ({
+    root,
+    digest: buildDigest(root, {
+      limit,
+      thread,
+      ci: args.has("ci") ? digestCi(root, thread) : null,
+    }),
+  }));
+  const single = roots.length === 1;
+  if (single && !reports[0].digest.total) {
+    fail(
+      thread
+        ? `No runs for thread ${thread}. Start one with: ratchet task start --session ${thread} --role coder --goal "..." --scope "src/**"`
+        : "No runs found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"",
+    );
+  }
+  const healthy = reports.every(
+    ({ digest }) => digest.attention.length === 0 && digest.decisions.length === 0,
+  );
+  if (args.has("json")) {
+    if (single) {
+      out(JSON.stringify({ root: roots[0], ...reports[0].digest, healthy }, null, 2));
+    } else {
+      out(
+        JSON.stringify(
+          { healthy, roots: reports.map(({ root, digest }) => ({ root, ...digest })) },
+          null,
+          2,
+        ),
+      );
+    }
+    process.exit(healthy ? 0 : 1);
+  }
+
+  for (const { root, digest } of reports) {
+    const header = single
+      ? `RATCHET DIGEST  last ${digest.total} run(s)${thread ? ` for thread ${thread}` : ""}${requested.length ? `  (${root})` : ""}`
+      : `RATCHET DIGEST  ${root}`;
+    renderDigest(digest, header);
+    if (!single) out("");
+  }
   process.exit(healthy ? 0 : 1);
+}
+
+function commandCi(args) {
+  const root = findRoot(process.cwd());
+  const runId = flagValue(args, "run");
+  let contract = null;
+  if (runId) {
+    contract = loadRun(root, runId);
+    if (!contract) fail(`no run ${runId}. Check the id with: ratchet status`, 1);
+  } else {
+    contract = contractForSession(root, null);
+  }
+  const commit = commitForRun(root, contract);
+  if (!commit) {
+    fail("Cannot resolve a commit to check. Run: git rev-parse HEAD (or pass --run <id> inside the repo)", 1);
+  }
+  const status = ciStatus(root, commit);
+  const payload = { run: contract?.id ?? null, commit, ...status };
+  if (args.has("json")) {
+    out(JSON.stringify(payload, null, 2));
+    process.exit(status.state === "fail" ? 1 : 0);
+  }
+  out(`CI  ${commit.slice(0, 12)}  ${status.state}${contract ? `  (run ${contract.id})` : ""}`);
+  out(`workflow: ${status.workflow ?? "(none)"}`);
+  out(`url:      ${status.url ?? "(none)"}`);
+  out(`checked:  ${status.checkedAt}`);
+  out(`reason:   ${status.reason}`);
+  if (status.state === "fail") {
+    out(
+      `next:     ${status.runId ? `gh run view ${status.runId} --log-failed` : "open the failed workflow, then push a fix"}`,
+    );
+    out(`          re-check with: ratchet ci${contract ? ` --run ${contract.id}` : ""}`);
+    process.exit(1);
+  }
+  if (status.state === "unknown") {
+    out("next:     verify GitHub CLI with: gh auth status");
+  }
+}
+
+function commandArch(args) {
+  const root = findRoot(process.cwd());
+  const config = loadConfig(root) ?? {};
+  const report = architectureCheck(root, config);
+  if (args.has("json")) {
+    out(JSON.stringify({ root, ...report }, null, 2));
+    process.exit(report.ok ? 0 : 1);
+  }
+  if (!report.configured) {
+    out("ARCH  no architecture rules (add architecture.forbidden or architecture.cycles to .ratchet/config.json)");
+    return;
+  }
+  out(`ARCH  ${report.files} file(s) · ${report.imports ?? 0} import(s) · ${report.violations.length} violation(s)`);
+  for (const violation of report.violations) {
+    out(`FAIL  ${violation.rule}  ${violation.from} -> ${violation.to}  (${violation.reason})`);
+  }
+  if (!report.ok) {
+    out("next: fix the import, or update architecture rules in .ratchet/config.json; then run: ratchet arch");
+    process.exit(1);
+  }
+  out("boundary: pass (declared import edges only, not design quality)");
 }
 
 function usage() {
@@ -1689,8 +1860,10 @@ usage:
   ratchet task status [--session <id>]
   ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]
   ratchet report [--session <id>] [--json]    # allow/deny trail for the current run
-  ratchet evidence [--run <id> | --session <id>] [--json]  # the run certificate: checks, changes, exceptions
-  ratchet digest [--limit N] [--thread <id>] [--json]  # global view, optionally one thread's runs
+  ratchet evidence [--run <id> | --session <id>] [--ci] [--json]  # the run certificate: checks, changes, exceptions
+  ratchet digest [--limit N] [--thread <id>] [--root <path>] [--ci] [--json]  # rollup per project, optionally one thread
+  ratchet ci [--run <id>] [--json]            # on-demand CI status for the run's commit, or HEAD
+  ratchet arch [--json]                       # declared import boundaries and cycles
   ratchet prompt [--session <id>] [--json]    # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
@@ -1752,6 +1925,12 @@ switch (cmd) {
     break;
   case "digest":
     commandDigest(args);
+    break;
+  case "ci":
+    commandCi(args);
+    break;
+  case "arch":
+    commandArch(args);
     break;
   case "guard":
     commandGuard(args);
