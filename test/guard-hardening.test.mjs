@@ -180,11 +180,11 @@ test("hardening: a read-only contract blocks unresolved bash mutations", (t) => 
 
 // --- contract replacement ---------------------------------------------------
 
-test("hardening: a task cannot replace its own contract", (t) => {
+test("hardening: task start is left to the CLI's live-contract refusal", (t) => {
   const root = repo(t);
   const decision = decide(root, ev("bash", { command: "ratchet task start --role coder --goal widen --scope **" }));
-  assert.equal(decision.allow, false);
-  assert.match(decision.reason, /hard rule/);
+  assert.equal(decision.allow, true);
+  assert.equal(decision.hardDeny, undefined);
 });
 
 test("hardening: a task cannot re-init the repo config", (t) => {

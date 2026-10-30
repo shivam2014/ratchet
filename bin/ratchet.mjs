@@ -18,6 +18,7 @@ import {
   writeText,
 } from "../lib/fsx.mjs";
 import {
+  allRuns,
   checksPath,
   clearCurrent,
   configPath,
@@ -1028,6 +1029,17 @@ function detectAdapters(root) {
   return found;
 }
 
+function formatAge(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "unknown age";
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "just started";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m ago`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
+}
+
 function commandStatus() {
   const root = findRoot(process.cwd());
   const contract = loadRun(root);
@@ -1036,6 +1048,14 @@ function commandStatus() {
   out(`ratchet: ${disabled ? "DISABLED" : "enabled"}`);
   if (disabled) out(`  since ${disabled.at}: ${disabled.reason}`);
   out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}`);
+  if (contract) {
+    out(`started: ${contract.createdAt}  (${formatAge(contract.createdAt)})`);
+    if (contract.session_id) out(`session: ${contract.session_id}`);
+  }
+  const stranded = allRuns(root).filter((run) => !runFinished(root, run.id) && run.id !== contract?.id);
+  if (stranded.length) {
+    out(`stranded: ${stranded.length} open run(s) with no pointer  (close with ratchet abandon --run <id> --reason "...")`);
+  }
   const entries = Object.entries(manifest.installed);
   const listed = new Set(entries.flatMap(([, record]) => record.paths ?? []));
   const detected = detectAdapters(root);

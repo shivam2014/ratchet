@@ -604,3 +604,27 @@ test("e2e: a space-separated scope is rejected with guidance", () => {
   assert.match(start.stderr, /one glob per flag/);
   assert.match(start.stderr, /commas/);
 });
+
+test("e2e: status shows the contract age and stranded runs", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = (goal) =>
+    ratchet(dir, [
+      "task", "start",
+      "--role", "coder",
+      "--goal", goal,
+      "--scope", "src/**",
+      "--verify", 'node -e "process.exit(0)"',
+    ]);
+  assert.equal(start("first").status, 0);
+
+  // Drop the pointer without closing the run: it becomes stranded.
+  fs.rmSync(path.join(dir, ".ratchet", "current"), { force: true });
+  assert.equal(start("second").status, 0);
+
+  const status = ratchet(dir, ["status"]);
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /started: .*\((just started|\d+[mhd] )/);
+  assert.match(status.stdout, /stranded: 1/);
+  assert.match(status.stdout, /ratchet abandon --run/);
+});

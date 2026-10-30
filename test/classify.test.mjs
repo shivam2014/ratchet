@@ -209,6 +209,7 @@ test("classify: git apply --check is a read", () => {
 
 test("classify: task start is only guarded when forced", () => {
   assert.equal(classifyBash("ratchet task start --help").hardDeny, false);
+  assert.equal(classifyBash("ratchet task start --goal x --scope '**'").hardDeny, false);
   assert.equal(classifyBash("ratchet check && ratchet done && ratchet task start --goal x --scope '**'").hardDeny, false);
   assert.equal(classifyBash("ratchet abandon --reason x && ratchet check && ratchet task start --goal y --scope '**'").hardDeny, false);
   assert.equal(classifyBash("ratchet task start --force --goal x --scope '**'").hardDeny, true);
