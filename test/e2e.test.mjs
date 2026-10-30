@@ -417,7 +417,7 @@ test("e2e: task start locks the check surface and Stop blocks after the check ch
   assert.equal(decision.checksLock, "changed");
   assert.equal(decision.evidence, null);
   assert.equal(decision.checks, null);
-  assert.match(decision.reason, /^check surface changed: changed check file: check\.mjs$/);
+  assert.match(decision.reason, /^check surface changed: changed check file: check\.mjs\. If intended: ratchet amend/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, ".ratchet", "runs", id, "checks.json"), "utf8")).ranAt, evidence.ranAt);
 });
 
@@ -588,4 +588,19 @@ test("e2e: approve records a hard-rule approval and done reports it", () => {
   const done = ratchet(dir, ["done"]);
   assert.equal(done.status, 0, done.stderr);
   assert.match(done.stdout, /approved: force-push \(fresh public history\)/);
+});
+
+test("e2e: a space-separated scope is rejected with guidance", () => {
+  const dir = session();
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const start = ratchet(dir, [
+    "task", "start",
+    "--role", "coder",
+    "--goal", "space scope",
+    "--scope", "src/** tests/**",
+    "--verify", 'node -e "process.exit(0)"',
+  ]);
+  assert.equal(start.status, 1);
+  assert.match(start.stderr, /one glob per flag/);
+  assert.match(start.stderr, /commas/);
 });

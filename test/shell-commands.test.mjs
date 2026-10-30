@@ -70,9 +70,17 @@ test("shell: comments and line continuation", () => {
   assert.deepEqual(commands[0].argv, ["echo", "ab"]);
 });
 
-test("shell: command substitution is unsupported, not guessed", () => {
-  assert.equal(parseCommands("echo $(git push --force)").unsupported, "command substitution");
-  assert.equal(parseCommands("echo `git push --force`").unsupported, "command substitution");
+test("shell: command substitution is captured, not guessed", () => {
+  const dollar = parseCommands("echo $(git push --force)");
+  assert.equal(dollar.unsupported, null);
+  assert.deepEqual(dollar.commands[0].substitutions, ["git push --force"]);
+
+  const backtick = parseCommands("echo `git push --force`");
+  assert.deepEqual(backtick.commands[0].substitutions, ["git push --force"]);
+});
+
+test("shell: process substitution is unsupported", () => {
+  assert.equal(parseCommands("cat <(echo x)").unsupported, "process substitution");
 });
 
 test("shell: unterminated quotes are unsupported", () => {

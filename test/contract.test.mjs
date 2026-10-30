@@ -74,6 +74,7 @@ test("createContract: defaults and verify ids", (t) => {
     { id: "verify-2", cmd: "b" },
   ]);
   assert.equal(contract.budgets.maxFiles, 12);
+  assert.equal(contract.budgets.maxWrites, 120);
 });
 
 test("loadRun: rejects a wrong contract version", (t) => {

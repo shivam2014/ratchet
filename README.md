@@ -70,7 +70,7 @@ Ratchet participates at three points only:
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
 
-Hard rules are evaluated on the parsed command's argv, not on raw text. A heredoc body or a commit message that mentions `git push --force` is data; `g''it push --force` still resolves to a force push, and `sh -c` is parsed recursively. Command substitution fails closed because the guard cannot see what it will run.
+Hard rules are evaluated on the parsed command's argv, not on raw text. A heredoc body or a commit message that mentions `git push --force` is data; `g''it push --force` still resolves to a force push, and `sh -c` is parsed recursively. Command substitution is parsed as a nested command; an unbalanced substitution fails closed.
 
 ```json
 {"harness":"opencode","tool":"write","input":{"path":"src/a.ts"},"cwd":"/repo"}
@@ -122,6 +122,8 @@ ratchet approve --rule force-push --reason "fresh public history"
 
 Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval is stored in `contract.json`, reported by `done`, and written to `result.json`. Privilege escalation, `--no-verify`, guard-state changes, and scope denials are not approvable.
 
+`--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
+
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
 
 ## Harnesses
@@ -171,7 +173,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **286 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **290 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

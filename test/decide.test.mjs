@@ -80,6 +80,19 @@ test("decide: temp paths outside the repo are allowed", (t) => {
   assert.match(decision.reason ?? "", /temp file/);
 });
 
+test("decide: temp writes are allowed with no contract", (t) => {
+  const root = emptyRepo(t);
+  const bash = decide(root, event("bash", { command: "rm -rf ratchet-probe", workdir: "/tmp" }));
+  assert.equal(bash.allow, true);
+  assert.match(bash.reason, /temp/);
+
+  const write = decide(root, event("write", { path: path.join(os.tmpdir(), "ratchet-probe.txt") }));
+  assert.equal(write.allow, true);
+
+  const outside = decide(root, event("bash", { command: "rm -rf ~/ratchet-probe" }));
+  assert.equal(outside.allow, false);
+});
+
 test("decide: scratch files do not consume the file budget", (t) => {
   const { root } = repo(t, { maxFiles: 1 });
   const real = decide(root, event("write", { path: "src/a.ts" }));

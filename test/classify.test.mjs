@@ -192,16 +192,25 @@ test("classify: hard rules still catch the real commands", () => {
   assert.equal(shell.hardDeny, true);
 });
 
-test("classify: an unresolved substitution fails closed", () => {
-  const r = classifyBash("echo $(git push --force)");
-  assert.equal(r.inline, true);
-  assert.equal(r.write, true);
-  assert.match(r.notes.join(" "), /command substitution/);
+test("classify: command substitution is parsed, not blanket-denied", () => {
+  const push = classifyBash("echo $(git push --force)");
+  assert.equal(push.hardDeny, true);
+
+  const url = classifyBash('curl "https://example.test/?v=$(date +%s)"');
+  assert.equal(url.write, false);
+  assert.equal(url.hardDeny, false);
+});
+
+test("classify: git apply --check is a read", () => {
+  assert.equal(classifyBash("git apply --check patch.diff").write, false);
+  assert.equal(classifyBash("git apply --stat patch.diff").write, false);
+  assert.equal(classifyBash("git apply patch.diff").write, true);
 });
 
 test("classify: task start is only guarded when forced", () => {
   assert.equal(classifyBash("ratchet task start --help").hardDeny, false);
   assert.equal(classifyBash("ratchet check && ratchet done && ratchet task start --goal x --scope '**'").hardDeny, false);
+  assert.equal(classifyBash("ratchet abandon --reason x && ratchet check && ratchet task start --goal y --scope '**'").hardDeny, false);
   assert.equal(classifyBash("ratchet task start --force --goal x --scope '**'").hardDeny, true);
   assert.equal(classifyBash("ratchet disable --reason x").hardDeny, true);
 });

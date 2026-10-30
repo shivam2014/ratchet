@@ -244,7 +244,7 @@ test("stop: editing package.json scripts after the lock blocks without running c
 
   assert.equal(blocked.allow, false);
   assert.equal(blocked.certified, false);
-  assert.equal(blocked.reason, "check surface changed: package scripts changed");
+  assert.equal(blocked.reason, "check surface changed: package scripts changed. If intended: ratchet amend --reason \"...\"");
   assert.equal(blocked.evidence, null);
   assert.equal(blocked.checks, null);
   assert.equal(blocked.checksLock, "changed");
@@ -262,7 +262,7 @@ test("stop: editing a referenced check file after the lock blocks", (t) => {
   const blocked = evaluateStop(root, stopEvent());
 
   assert.equal(blocked.allow, false);
-  assert.equal(blocked.reason, "check surface changed: changed check file: check.mjs");
+  assert.equal(blocked.reason, "check surface changed: changed check file: check.mjs. If intended: ratchet amend --reason \"...\"");
   assert.equal(blocked.evidence, null);
   assert.equal(blocked.checks, null);
   assert.equal(blocked.checksLock, "changed");

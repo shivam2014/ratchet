@@ -221,6 +221,11 @@ function commandTask(args) {
   const role = String(args.one("role", "coder"));
   const readOnly = args.has("read-only") || role === "reviewer" || role === "scout";
   const scope = args.all("scope").length ? splitGlobs(args.all("scope")) : config.defaults?.scope ?? [];
+  for (const value of args.all("scope")) {
+    if (/\s/.test(String(value).trim()) && !String(value).includes(",")) {
+      fail('--scope takes one glob per flag. Repeat --scope, or separate globs with commas: --scope "src/**,tests/**"');
+    }
+  }
   if (!readOnly && !scope.length) {
     fail('task start needs --scope (for example --scope "src/**" --scope "tests/**"), or pass --read-only.');
   }
@@ -1207,7 +1212,7 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start --role coder --goal "..." --scope "src/**" [--verify "npm test"] [--pstack] [--bend] [--force]
+  ratchet task start --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--pstack] [--bend] [--force]
   ratchet task status
   ratchet report [--json]                     # allow/deny trail for the current run
   ratchet prompt [--json]                     # contract brief for the system prompt
