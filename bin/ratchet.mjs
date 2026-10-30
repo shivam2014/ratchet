@@ -18,18 +18,23 @@ import {
   writeText,
 } from "../lib/fsx.mjs";
 import {
+  addSessionAlias,
   allRuns,
   checksPath,
   clearCurrent,
   configPath,
+  contractSessions,
   createContract,
   currentId,
   defaultConfig,
   detectChecks,
   eventsPath,
+  isSessionBound,
   latestRun,
+  liveRuns,
   loadConfig,
   loadRun,
+  loadRunForSession,
   runDir,
   runFinished,
   saveConfig,
@@ -145,10 +150,52 @@ function requireConfig(root) {
   return config;
 }
 
-function requireContract(root) {
+/** A value flag such as `--session` or `--thread`. A bare flag is a usage error. */
+function flagValue(args, key) {
+  const value = args.one(key);
+  if (value === undefined) return null;
+  if (value === true) fail(`--${key} needs a value`);
+  const text = String(value).trim();
+  return text || null;
+}
+
+/**
+ * Resolve the contract a CLI command acts on. A session sees its own contract
+ * (lead session or worker alias) first, then the manual current pointer. The
+ * pointer never lends a session-bound contract to a different session.
+ */
+function contractForSession(root, sessionId) {
+  if (sessionId) return loadRunForSession(root, sessionId);
   const contract = loadRun(root);
-  if (!contract) fail("No active task contract. Run: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+  if (contract && runFinished(root, contract.id)) return null;
   return contract;
+}
+
+function requireContract(root, sessionId = null) {
+  const contract = contractForSession(root, sessionId);
+  if (!contract) {
+    fail(
+      sessionId
+        ? `No active task contract for session ${sessionId}. Run: ratchet task start --session ${sessionId} --role coder --goal "..." --scope "src/**"`
+        : "No active task contract. Run: ratchet task start --role coder --goal \"...\" --scope \"src/**\"",
+    );
+  }
+  return contract;
+}
+
+function describeSession(contract) {
+  const lead = leadSession(contract);
+  const aliases = Array.isArray(contract.aliases) ? contract.aliases.filter(Boolean) : [];
+  if (lead && aliases.length) return `${lead}  workers: ${aliases.join(", ")}`;
+  if (lead) return lead;
+  if (aliases.length) return `manual  workers: ${aliases.join(", ")}`;
+  return "manual";
+}
+
+/** Abandon a live contract without claiming the work is done. */
+function abandonLive(root, contract, reason) {
+  const result = resultFor(root, contract, null, { verdict: "abandoned", reason });
+  writeJson(path.join(runDir(root, contract.id), "result.json"), result);
 }
 
 function relativeToRoot(root, p) {
@@ -177,47 +224,188 @@ function commandInit(args) {
   out("  ratchet done");
 }
 
+/** The lead session on a contract. Empty for a manual contract. */
+function leadSession(contract) {
+  const lead = contract?.session_id;
+  return lead === undefined || lead === null ? "" : String(lead).trim();
+}
+
+/**
+ * Destructive commands act as the contract's lead. A worker alias inherits the
+ * boundary for guard and check purposes, but it cannot close or amend the
+ * lead's run: that would let a subagent end its parent's contract.
+ */
+function assertLeadOwner(contract, sessionId, command) {
+  const lead = leadSession(contract);
+  if (!sessionId || !lead || lead === sessionId) return;
+  fail(
+    [
+      `session ${sessionId} is a worker alias of ${contract.id}; the lead session ${lead} owns it.`,
+      `run: ratchet ${command} --session ${lead}`,
+    ].join("\n"),
+  );
+}
+
+function commandTaskBind(root, args, sessionId) {
+  if (!sessionId) fail("task bind needs --session <child-id>");
+  const runId = flagValue(args, "run");
+  const leadArg = flagValue(args, "lead");
+  let contract = null;
+  if (runId) {
+    contract = loadRun(root, runId);
+    if (!contract) fail(`no run ${runId}`);
+  } else if (leadArg) {
+    const found = loadRunForSession(root, leadArg);
+    contract = found && contractSessions(found).includes(leadArg) ? found : null;
+    if (!contract) fail(`no contract is bound to lead session ${leadArg}`);
+  } else {
+    contract = loadRun(root);
+    if (contract && runFinished(root, contract.id)) contract = null;
+  }
+  if (!contract) {
+    fail("No active task contract to bind. Pass --run <id> or --lead <session-id>, or start one first.");
+  }
+  if (runFinished(root, contract.id)) fail(`run ${contract.id} is already closed`);
+  if (contractSessions(contract).includes(sessionId)) {
+    out(`already bound: ${sessionId} -> ${contract.id}`);
+    return;
+  }
+
+  // A session belongs to one boundary. Moving it silently would let a worker
+  // escape the lead's scope by re-binding, so refuse and name the owner.
+  const owner = allRuns(root)
+    .filter((other) => !runFinished(root, other.id) && other.id !== contract.id)
+    .find((other) => contractSessions(other).includes(sessionId));
+  if (owner) {
+    fail(
+      [
+        `session ${sessionId} is already bound to ${owner.id} (${describeSession(owner)})`,
+        `close that contract first: ratchet done --session ${leadSession(owner) || "<lead>"}`,
+        `or close one run directly: ratchet abandon --run ${owner.id} --reason "..."`,
+      ].join("\n"),
+    );
+  }
+
+  addSessionAlias(contract, sessionId);
+  // Binding is metadata on the contract, not a new current pointer: it must not
+  // shift the CLI fallback away from the run a human is working on.
+  saveContract(root, contract, { pointer: false });
+  out(`BOUND  ${sessionId}`);
+  out(`contract: ${contract.id}  (${contract.goal})`);
+  out(`scope:    ${contract.scope.join(", ") || "(none)"}`);
+  out("the worker inherits this contract's scope, budgets, checks, and evidence");
+}
+
 function commandTask(args) {
   const sub = args.positional[0];
   const root = findRoot(process.cwd());
   const config = requireConfig(root);
+  const sessionId = flagValue(args, "session");
 
   if (sub === "status") {
-    const contract = requireContract(root);
+    const contract = requireContract(root, sessionId);
     const state = loadState(root, contract.id);
     const checks = readJson(checksPath(root, contract.id), null);
     out(`run:     ${contract.id}`);
     out(`goal:    ${contract.goal}`);
     out(`role:    ${contract.role}${contract.readOnly ? " (read-only)" : ""}`);
+    out(`session: ${describeSession(contract)}`);
     out(`scope:   ${contract.scope.join(", ") || "(none)"}`);
     out(`budgets: ${state.files.size}/${contract.budgets.maxFiles} files, ${state.writes}/${contract.budgets.maxWrites} writes`);
     out(`checks:  ${checks ? (checks.ok ? "pass" : "fail") + " (" + checks.ranAt + ")" : "not run"}`);
     return;
   }
 
-  if (sub !== "start") fail("usage: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+  if (sub === "bind") {
+    commandTaskBind(root, args, sessionId);
+    return;
+  }
 
-  // One contract at a time. Starting a second one used to overwrite the active
-  // pointer and strand the first run with no result, which looks finished in
-  // status but carries no evidence. --force closes it on the record instead.
-  const live = loadRun(root);
-  if (live && !runFinished(root, live.id)) {
+  if (sub !== "start") {
+    fail(
+      'usage: ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**"\n' +
+        "       ratchet task status [--session <id>]\n" +
+        "       ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]",
+    );
+  }
+
+  // One live contract per checkout is the safe default. A session-bound start
+  // may join other session-bound contracts, but a manual contract still keeps
+  // the old single-contract rule: it has no session to own a second boundary.
+  const live = liveRuns(root);
+  const owned = sessionId
+    ? live.filter((contract) => leadSession(contract) === sessionId)
+    : live.filter((contract) => !isSessionBound(contract));
+  const workerFor = sessionId
+    ? live.filter(
+        (contract) =>
+          !owned.includes(contract) &&
+          contractSessions(contract).includes(sessionId) &&
+          leadSession(contract) !== sessionId,
+      )
+    : [];
+  const blockers = live.filter(
+    (contract) =>
+      !owned.includes(contract) &&
+      !workerFor.includes(contract) &&
+      (sessionId ? !isSessionBound(contract) : true),
+  );
+
+  if (workerFor.length) {
+    const first = workerFor[0];
+    fail(
+      [
+        `session ${sessionId} is bound as a worker alias of ${first.id} (lead: ${leadSession(first) || "manual"})`,
+        "a worker does not start a second contract; its lead owns the boundary",
+        `finish it with: ratchet done --session ${leadSession(first) || "<lead>"}`,
+        `or close it with: ratchet abandon --run ${first.id} --reason "..."`,
+      ].join("\n"),
+    );
+  }
+
+  if (blockers.length) {
+    const first = blockers[0];
+    fail(
+      (sessionId
+        ? [
+            `a manual contract is still live: ${first.id}`,
+            "a session cannot replace the human CLI's contract",
+            "finish it with: ratchet done",
+            'or close it with: ratchet abandon --reason "..."',
+            `or attach this session to it: ratchet task bind --session ${sessionId} --run ${first.id}`,
+          ]
+        : [
+            `${blockers.length} session-bound contract(s) are live: ${blockers.map((c) => c.id).join(", ")}`,
+            "a manual contract would make this checkout multi-live without a session owner",
+            "finish each with: ratchet done --session <id>",
+            'or close one with: ratchet abandon --run <id> --reason "..."',
+            "start a session contract instead: ratchet task start --session <id> ...",
+            "one worktree per lead is still the safest split",
+          ]
+      ).join("\n"),
+    );
+  }
+
+  // A contract the caller owns may be replaced on the record. This is how
+  // --force keeps working without letting one session abandon another's run.
+  if (owned.length) {
     if (!args.has("force")) {
+      const first = owned[0];
       fail(
         [
-          `a contract is still live: ${live.id}`,
-          "finish it with: ratchet done",
-          'or close it with: ratchet abandon --reason "..."',
+          `a contract is still live: ${first.id}`,
+          sessionId ? `finish it with: ratchet done --session ${sessionId}` : "finish it with: ratchet done",
+          sessionId
+            ? `or close it with: ratchet abandon --session ${sessionId} --reason "..."`
+            : 'or close it with: ratchet abandon --reason "..."',
           "or replace it with: ratchet task start --force ... (records the old one as abandoned)",
         ].join("\n"),
       );
     }
-    const abandoned = resultFor(root, live, null, {
-      verdict: "abandoned",
-      reason: "superseded by a new contract (task start --force)",
-    });
-    writeJson(path.join(runDir(root, live.id), "result.json"), abandoned);
-    out(`superseded: ${live.id} (abandoned)`);
+    for (const contract of owned) {
+      abandonLive(root, contract, "superseded by a new contract (task start --force)");
+      out(`superseded: ${contract.id} (abandoned)`);
+    }
   }
 
   const goal = String(args.one("goal", args.positional.slice(1).join(" ")) || "").trim();
@@ -277,13 +465,21 @@ function commandTask(args) {
     verify,
     checkSurface: lockCheckSurface(root, verify),
   });
+  if (sessionId) contract.session_id = sessionId;
   saveContract(root, contract);
   out(`run:     ${contract.id}`);
+  if (sessionId) out(`session: ${sessionId}`);
   out(`contract ${path.join(runDir(root, contract.id), "contract.json")}`);
   out(`scope:   ${contract.scope.join(", ")}`);
   out(`budgets: ${contract.budgets.maxFiles} files, ${contract.budgets.maxWrites} writes`);
   if (contract.gates?.length) out(`gates:   ${contract.gates.map((g) => g.artifact).join(", ")}`);
   out(`verify:  ${contract.verify.map((v) => v.cmd).join(" && ") || "(none)"}`);
+  const nowLive = liveRuns(root);
+  if (nowLive.length > 1) {
+    out("");
+    out(`note:    ${nowLive.length} live contracts now share this checkout; the git index and working tree are still shared.`);
+    out("         use one worktree per lead when file overlap is possible.");
+  }
 }
 
 function normaliseEvent(raw) {
@@ -475,7 +671,7 @@ function commandHook(args) {
 function commandCheck(args) {
   const root = findRoot(process.cwd());
   const config = requireConfig(root);
-  const contract = loadRun(root);
+  const contract = contractForSession(root, flagValue(args, "session"));
   if (contract?.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
     if (changes.length) fail(`check surface changed: ${changes.join(", ")}. If the change is intended, run: ratchet amend --reason "..."`);
@@ -538,9 +734,11 @@ function resultFor(root, contract, checks, extra = {}) {
   };
 }
 
-function commandDone() {
+function commandDone(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  const sessionId = flagValue(args, "session");
+  const contract = requireContract(root, sessionId);
+  assertLeadOwner(contract, sessionId, "done");
   if (contract.checksLock) {
     const changes = diffCheckSurface(contract.checksLock, computeCheckSurface(root, contract.verify));
     if (changes.length) {
@@ -586,7 +784,13 @@ function commandDone() {
     out("WARN  the guard observed 0 writes. Scope was not enforced for this run; only the check surface was.");
     out("      wire the harness: ratchet install --harness opencode --project");
   }
-  out("released: no active contract. Start the next task with ratchet task start.");
+  const remaining = liveRuns(root);
+  if (remaining.length) {
+    out(`released: ${contract.id}; ${remaining.length} other live contract(s) remain: ${remaining.map((c) => c.id).join(", ")}`);
+    out("         act on one with --session <id>, or run each lead in its own worktree.");
+  } else {
+    out("released: no active contract. Start the next task with ratchet task start.");
+  }
 }
 
 /**
@@ -597,7 +801,9 @@ function commandDone() {
  */
 function commandAmend(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  const sessionId = flagValue(args, "session");
+  const contract = requireContract(root, sessionId);
+  assertLeadOwner(contract, sessionId, "amend");
   const reason = String(args.one("reason", "")).trim();
   if (!reason) fail('amend needs --reason "..." so the audit trail records why the check surface moved');
   if (!contract.checksLock) fail("this contract has no locked check surface to amend");
@@ -631,23 +837,31 @@ function commandAmend(args) {
 function commandAbandon(args) {
   const root = findRoot(process.cwd());
   const requested = String(args.one("run", "")).trim();
-  const contract = requested ? loadRun(root, requested) : requireContract(root);
+  const sessionId = flagValue(args, "session");
+  const contract = requested ? loadRun(root, requested) : requireContract(root, sessionId);
   if (!contract) fail(`no run ${requested}`);
   if (runFinished(root, contract.id)) fail(`run ${contract.id} is already closed`);
+  if (!requested) assertLeadOwner(contract, sessionId, "abandon");
   const reason = String(args.one("reason", "")).trim();
   if (!reason) fail('abandon needs --reason "..." so the audit trail records why the contract was dropped');
 
-  const result = resultFor(root, contract, null, { verdict: "abandoned", reason });
-  writeJson(path.join(runDir(root, contract.id), "result.json"), result);
+  abandonLive(root, contract, reason);
   if (currentId(root) === contract.id) clearCurrent(root, contract.id);
   out(`ABANDONED  ${contract.id}`);
   out(`reason: ${reason}`);
-  out(currentId(root) ? `live contract unchanged: ${currentId(root)}` : "released: no active contract.");
+  const remaining = liveRuns(root);
+  if (remaining.length) {
+    out(`still live: ${remaining.map((run) => run.id).join(", ")}`);
+  } else {
+    out("released: no active contract.");
+  }
 }
 
 function commandApprove(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  const sessionId = flagValue(args, "session");
+  const contract = requireContract(root, sessionId);
+  assertLeadOwner(contract, sessionId, "approve");
   const rule = String(args.one("rule", "")).trim();
   const reason = String(args.one("reason", "")).trim();
   if (!rule) fail(`approve needs --rule <${[...APPROVABLE_RULES].join("|")}>`);
@@ -664,6 +878,17 @@ function commandApprove(args) {
 
 function contractForRun(root, args, command) {
   const config = requireConfig(root);
+  // `run` creates a manual contract, so it keeps the single-contract rule.
+  const live = liveRuns(root);
+  if (live.length) {
+    fail(
+      [
+        `${live.length} live contract(s) already own this checkout: ${live.map((c) => c.id).join(", ")}`,
+        "finish each with: ratchet done --session <id>, or close one with: ratchet abandon --run <id> --reason \"...\"",
+        "ratchet run starts a manual contract and cannot add a second boundary",
+      ].join("\n"),
+    );
+  }
   const auto = config.auto ?? {};
   const goal = String(args.one("goal", command.join(" ")) || "run");
   const scope = args.all("scope").length
@@ -1101,19 +1326,33 @@ function formatAge(iso) {
   return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
 }
 
-function commandStatus() {
+function commandStatus(args) {
   const root = findRoot(process.cwd());
-  const contract = loadRun(root);
+  const sessionId = flagValue(args, "session");
+  const contract = contractForSession(root, sessionId);
+  const live = liveRuns(root);
   const disabled = disabledState(root);
   const manifest = loadManifest(root);
   out(`ratchet: ${disabled ? "DISABLED" : "enabled"}`);
   if (disabled) out(`  since ${disabled.at}: ${disabled.reason}`);
-  out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}`);
+  out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}${sessionId && !contract ? `  (session ${sessionId})` : ""}`);
   if (contract) {
     out(`started: ${contract.createdAt}  (${formatAge(contract.createdAt)})`);
-    if (contract.session_id) out(`session: ${contract.session_id}`);
+    out(`session: ${describeSession(contract)}`);
   }
-  const stranded = allRuns(root).filter((run) => !runFinished(root, run.id) && run.id !== contract?.id);
+  // The one-contract rule was repo-scoped. Multi-session mode is a bridge,
+  // not a merge: git still has one index and one working tree per checkout.
+  if (live.length > 1 || (live.length === 1 && live[0].id !== contract?.id)) {
+    out(`live: ${live.length} contract(s) in this checkout`);
+    for (const run of live) {
+      out(`  ${run.id}  session: ${describeSession(run)}  ${run.goal}  (${formatAge(run.createdAt)})`);
+    }
+  }
+  if (live.length > 1) {
+    out("WARN  more than one live contract shares this checkout. The git index and working tree are shared, so file conflicts are still possible. Use one worktree per lead.");
+  }
+  const liveIds = new Set(live.map((run) => run.id));
+  const stranded = allRuns(root).filter((run) => !runFinished(root, run.id) && !liveIds.has(run.id));
   if (stranded.length) {
     out(`stranded: ${stranded.length} open run(s) with no pointer  (close with ratchet abandon --run <id> --reason "...")`);
   }
@@ -1217,7 +1456,7 @@ function briefText(root, contract, { guarded = true } = {}) {
 
 function commandPrompt(args) {
   const root = findRoot(process.cwd());
-  const contract = requireContract(root);
+  const contract = requireContract(root, flagValue(args, "session"));
   const state = loadState(root, contract.id);
   const brief = {
     run: contract.id,
@@ -1242,7 +1481,7 @@ function commandPrompt(args) {
 function commandReport(args) {
   const root = findRoot(process.cwd());
   // After done the pointer is released, so fall back to the newest run.
-  const contract = loadRun(root) ?? latestRun(root);
+  const contract = contractForSession(root, flagValue(args, "session")) ?? latestRun(root);
   if (!contract) fail("No run found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
   const events = readJsonl(eventsPath(root, contract.id));
   const checks = readJson(checksPath(root, contract.id), null);
@@ -1291,7 +1530,9 @@ function commandReport(args) {
 function commandEvidence(args) {
   const root = findRoot(process.cwd());
   const id = String(args.one("run", "")).trim();
-  const contract = id ? loadRun(root, id) : loadRun(root) ?? latestRun(root);
+  const contract = id
+    ? loadRun(root, id)
+    : contractForSession(root, flagValue(args, "session")) ?? latestRun(root);
   if (!contract) fail("No run found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
   const evidence = buildEvidence(root, contract);
   const clean = evidenceClean(evidence);
@@ -1330,8 +1571,15 @@ function commandEvidence(args) {
 
 function commandDigest(args) {
   const root = findRoot(process.cwd());
-  const digest = buildDigest(root, { limit: Number(args.one("limit", 30)) });
-  if (!digest.total) fail("No runs found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"");
+  const thread = flagValue(args, "thread");
+  const digest = buildDigest(root, { limit: Number(args.one("limit", 30)), thread });
+  if (!digest.total) {
+    fail(
+      thread
+        ? `No runs for thread ${thread}. Start one with: ratchet task start --session ${thread} --role coder --goal "..." --scope "src/**"`
+        : "No runs found. Start one with: ratchet task start --role coder --goal \"...\" --scope \"src/**\"",
+    );
+  }
   const healthy = digest.attention.length === 0;
   if (args.has("json")) {
     out(JSON.stringify({ ...digest, healthy }, null, 2));
@@ -1339,7 +1587,7 @@ function commandDigest(args) {
   }
 
   const c = digest.counts;
-  out(`RATCHET DIGEST  last ${digest.total} run(s)`);
+  out(`RATCHET DIGEST  last ${digest.total} run(s)${thread ? ` for thread ${thread}` : ""}`);
   out(`runs:       ${c.done} done · ${c.abandoned} abandoned · ${c.failed} failed · ${c.open} open`);
   out(`checks:     ${c.checksPass} pass · ${c.checksFail} fail · ${c.checksUnknown} unknown`);
   out(`scope:      ${c.outsideRuns} run(s) with outside changes`);
@@ -1363,29 +1611,36 @@ function usage() {
 
 usage:
   ratchet init [--force]
-  ratchet task start --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--pstack] [--bend] [--force]
-  ratchet task status
-  ratchet report [--json]                     # allow/deny trail for the current run
-  ratchet evidence [--run <id>] [--json]      # the run certificate: checks, changes, exceptions
-  ratchet digest [--limit N] [--json]         # global view: run health and what needs a human
-  ratchet prompt [--json]                     # contract brief for the system prompt
+  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--pstack] [--bend] [--force]
+  ratchet task status [--session <id>]
+  ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]
+  ratchet report [--session <id>] [--json]    # allow/deny trail for the current run
+  ratchet evidence [--run <id> | --session <id>] [--json]  # the run certificate: checks, changes, exceptions
+  ratchet digest [--limit N] [--thread <id>] [--json]  # global view, optionally one thread's runs
+  ratchet prompt [--session <id>] [--json]    # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
   ratchet hook pre-commit                     # staged paths vs contract scope, then verify
   ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] -- <command...>
-  ratchet check [--timeout 120000]
-  ratchet done
-  ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
-  ratchet abandon --reason "..." [--run <id>]  # close the live contract, or one stranded run
-  ratchet approve --rule force-push --reason "..."  # allow one operational hard rule, on the record
+  ratchet check [--session <id>] [--timeout 120000]
+  ratchet done [--session <id>]
+  ratchet amend [--session <id>] --reason "..."  # re-baseline the locked check surface, on the record
+  ratchet abandon --reason "..." [--run <id> | --session <id>]  # close the live contract, or one stranded run
+  ratchet approve [--session <id>] --rule force-push --reason "..."  # allow one operational hard rule, on the record
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
   ratchet install [--harness pi,claude,opencode,t3,codex] [--user|--project] [--all] [--dry-run] [--yes]
   ratchet uninstall [--harness ...] [--dry-run]
-  ratchet status
+  ratchet status [--session <id>]
   ratchet disable --reason "..."
   ratchet enable
+
+sessions: a contract is a thread boundary. --session binds it to one harness
+session; task bind attaches a worker session to the lead's contract. --force
+replaces the caller's own contract, never another session's. More than one
+session contract may share a checkout, but git still has one index per
+checkout: use one worktree per lead when file overlap is possible.
 
 layers: code > types > lint > CI > tests > prose. A rule that nothing enforces is a wish.`);
 }
@@ -1436,7 +1691,7 @@ switch (cmd) {
     commandCheck(args);
     break;
   case "done":
-    commandDone();
+    commandDone(args);
     break;
   case "amend":
     commandAmend(args);
@@ -1469,7 +1724,7 @@ switch (cmd) {
     commandDisable(args);
     break;
   case "status":
-    commandStatus();
+    commandStatus(args);
     break;
   default:
     usage();

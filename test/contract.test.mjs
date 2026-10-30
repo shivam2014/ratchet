@@ -4,8 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  addSessionAlias,
+  contractSessions,
   createContract,
   detectChecks,
+  liveRuns,
   loadRun,
   loadRunForSession,
   normaliseTarget,
@@ -134,4 +137,58 @@ test("loadRunForSession: a stranded open run does not shadow the pointer", (t) =
   fs.rmSync(path.join(root, ".ratchet", "current"), { force: true });
 
   assert.equal(loadRunForSession(root, "s1"), null);
+});
+
+test("contractSessions: lead session plus aliases, deduped", (t) => {
+  const root = temp(t);
+  const contract = createContract(root, { goal: "g", role: "coder", scope: ["src/**"] });
+  assert.deepEqual(contractSessions(contract), []);
+  contract.session_id = "lead";
+  assert.equal(addSessionAlias(contract, "child"), true);
+  assert.equal(addSessionAlias(contract, "child"), false);
+  assert.equal(addSessionAlias(contract, "lead"), false);
+  assert.equal(addSessionAlias(contract, ""), false);
+  assert.deepEqual(contractSessions(contract), ["lead", "child"]);
+});
+
+test("loadRunForSession: a worker alias resolves the lead contract", (t) => {
+  const root = temp(t);
+  const lead = createContract(root, { goal: "lead", role: "coder", scope: ["src/**"] });
+  lead.session_id = "lead";
+  addSessionAlias(lead, "child");
+  saveContract(root, lead);
+
+  assert.equal(loadRunForSession(root, "lead")?.id, lead.id);
+  assert.equal(loadRunForSession(root, "child")?.id, lead.id);
+  // The alias does not make the contract a manual fallback for other sessions.
+  assert.equal(loadRunForSession(root, "other"), null);
+});
+
+test("liveRuns: the pointer and session-bound runs are live, stranded runs are not", (t) => {
+  const root = temp(t);
+  const stranded = createContract(root, { goal: "stranded", role: "coder", scope: ["web/**"] });
+  stranded.createdAt = "2026-01-01T00:00:00.000Z";
+  saveContract(root, stranded);
+
+  const bound = createContract(root, { goal: "bound", role: "coder", scope: ["src/**"] });
+  bound.session_id = "s-a";
+  bound.createdAt = "2026-02-01T00:00:00.000Z";
+  saveContract(root, bound);
+
+  const manual = createContract(root, { goal: "manual", role: "coder", scope: ["lib/**"] });
+  manual.createdAt = "2026-03-01T00:00:00.000Z";
+  saveContract(root, manual);
+
+  const closed = createContract(root, { goal: "closed", role: "coder", scope: ["src/**"] });
+  closed.session_id = "s-b";
+  closed.createdAt = "2026-04-01T00:00:00.000Z";
+  saveContract(root, closed);
+  fs.writeFileSync(path.join(root, ".ratchet", "runs", closed.id, "result.json"), "{}\n");
+  // A finished run does not own the pointer; put it back on the manual run.
+  saveContract(root, manual);
+
+  assert.deepEqual(
+    liveRuns(root).map((contract) => contract.id).sort(),
+    [bound.id, manual.id].sort(),
+  );
 });

@@ -122,7 +122,7 @@ The contract is deliberately small:
 
 Everything is plain JSON. Any harness, script, or CI job can read it. Nothing important lives only in a model's context.
 
-Contracts are keyed by harness session. Adapters pass the session id on every event, and the guard resolves the contract by session rather than by the global `.ratchet/current` pointer. That pointer stays for humans and single-thread CLI use, so two concurrent threads do not share scope.
+Contracts are keyed by harness session. Adapters pass the session id on every event, and the guard resolves the contract by session rather than by the global `.ratchet/current` pointer. That pointer stays for humans and single-thread CLI use, so two concurrent threads do not share scope. A lead can attach worker sessions with `ratchet task bind`; the child ids are stored as `aliases`, and those sessions resolve the lead's contract instead of starting their own. Several session-bound contracts may share one checkout as a bridge, but git still has one index and one working tree, so the safe split is one worktree per lead.
 
 ### Two outputs, two confidence levels
 

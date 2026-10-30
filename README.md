@@ -37,7 +37,7 @@ Agent instructions decay. A `SKILL.md` or `AGENTS.md` line is a suggestion the m
 
 Ratchet puts the repeatable part of the workflow outside the model loop:
 
-- **One contract per task.** Goal, role, writable paths, budgets, verification commands.
+- **One contract per thread.** Goal, role, writable paths, budgets, verification commands. A contract is bound to a harness session, so two leads do not share scope.
 - **Two enforcers.** An in-loop adapter for fast feedback; git and CI for the authority.
 - **One rule table.** Every correction is paired with the mechanism that makes it impossible to repeat.
 
@@ -53,6 +53,7 @@ The whole policy is a small JSON file, readable by any harness, script, or CI jo
 | `verify` | Commands `ratchet check` runs. `ratchet done` refuses unless all exit 0. |
 | `role` | Capability profile: coder, reviewer, writer, or a repo-defined role. |
 | `goal` | Audit label. |
+| `session_id` / `aliases` | The lead harness session and any worker sessions bound with `ratchet task bind`. Empty means a manual contract. |
 
 A missing, malformed, or stale contract fails closed: writes are denied until a valid contract exists.
 
@@ -106,13 +107,35 @@ ratchet done
 
 `ratchet done` releases the contract. A new task starts with a new contract.
 
+### Sessions and worker threads
+
+A contract can be bound to one harness session, making "one contract per thread" real:
+
+```bash
+ratchet task start --session <lead-id> --role coder --goal "add retry" --scope "src/upload/**"
+```
+
+Without `--session` the contract stays manual and `.ratchet/current` is the fallback, as before. With `--session`, the guard and the CLI resolve the contract by session, and more than one session-bound contract may be live in one checkout. A manual contract still keeps the old one-at-a-time rule: it refuses a second start, and it blocks a session start until it is finished or closed.
+
+A worker session inherits the lead's boundary instead of starting a second contract:
+
+```bash
+ratchet task bind --session <child-id>                  # bind to the current contract
+ratchet task bind --session <child-id> --run <lead-run> # or name the lead's run
+ratchet task bind --session <child-id> --lead <lead-session-id>
+```
+
+The alias is stored in the contract (`aliases`). `ratchet check`, `ratchet done`, `ratchet task status`, `ratchet status`, and `ratchet digest --thread` accept `--session`. A worker can check the lead's contract, but only the lead session can close or amend it.
+
+**The checkout is still shared.** Two live contracts share one git index and one working tree, so file conflicts are possible even when scopes differ. `ratchet status` lists every live contract and warns. Use one worktree per lead when two threads can touch the same files.
+
 Tests written inside a task change the check surface, so `check` and `done` refuse until you accept the change on the record:
 
 ```bash
 ratchet amend --reason "added assertions for the retry path"
 ```
 
-The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract and records the old one as abandoned.
+The amendment stores the old hash, the new hash, the changed files, and the reason in the contract. The refusal still happens by default: an agent cannot weaken a check silently. If the task is wrong, close it without claiming success with `ratchet abandon --reason "..."`. `ratchet task start --force` replaces a live contract the caller owns (a manual contract, or the caller's own `--session`) and records the old one as abandoned. It never abandons another session's contract.
 
 A hard rule blocked a legitimate operation? A human can approve one for the live contract, on the record:
 
@@ -124,9 +147,9 @@ Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval i
 
 `--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
 
-The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest` exits 1 when something needs a human. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
+The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest --thread <session-or-alias>` narrows the whole report to one thread's contracts. `digest` exits 1 when something needs a human. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
 
-`ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
+`ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`; `ratchet abandon --session <id>` closes one session's contract.
 
 The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. With no live contract it falls back to the config's checks and warns that scope was not checked.
 
@@ -159,28 +182,29 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet init` | Detect checks, write `.ratchet/config.json` and `rules.tsv` |
 | `ratchet install` | Install adapters and skills for one or more harnesses |
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
-| `ratchet status` | Show the contract, its start time, stranded runs, installed harnesses, and enabled/disabled state |
+| `ratchet status` | Show the contract (optionally `--session`), its age, every live contract in the checkout, stranded runs, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract and marks it abandoned |
-| `ratchet task status` | Show scope, budgets, and check state |
-| `ratchet prompt` | Render the contract brief to inject into a system prompt |
+| `ratchet task start` | Write a contract and make it current; `--session <id>` binds it to a thread; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract the caller owns and marks it abandoned |
+| `ratchet task status` | Show scope, budgets, check state, and session (`--session <id>` resolves the thread's contract) |
+| `ratchet task bind` | Attach a worker `--session` to the lead's contract (`--run <id>` or `--lead <session-id>`); the worker inherits the boundary |
+| `ratchet prompt` | Render the contract brief to inject into a system prompt (`--session <id>`) |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
-| `ratchet check` | Run the contract's verification commands, save evidence |
+| `ratchet check` | Run the contract's verification commands, save evidence (`--session <id>`) |
 | `ratchet hook pre-commit` | Refuse staged paths outside scope or runtime state, then run the contract's verify commands |
-| `ratchet report` | Show the allow/deny trail for the current run; `--json` for machine output |
-| `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--json` |
-| `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, exceptions; exits 1 when something needs a human |
-| `ratchet done` | Refuse without passing evidence; write `result.json` |
-| `ratchet amend` | Re-baseline the locked check surface for the live contract; `--reason` is required and recorded |
-| `ratchet abandon` | Close the live contract, or a stranded one with `--run <id>`; `--reason` is required and recorded |
-| `ratchet approve` | Allow one operational hard rule (`force-push`, `hard-reset`, `git-clean`) for the live contract; `--reason` is required and recorded |
+| `ratchet report` | Show the allow/deny trail for a run; `--session <id>`; `--json` for machine output |
+| `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--run <id>`, `--session <id>`, `--json` |
+| `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, exceptions; `--thread <session-or-alias>` scopes it; exits 1 when something needs a human |
+| `ratchet done` | Refuse without passing evidence; write `result.json`; `--session <id>` closes that thread's contract even when `current` names another |
+| `ratchet amend` | Re-baseline the locked check surface for the lead's contract; `--session <id>`; `--reason` is required and recorded |
+| `ratchet abandon` | Close the live contract, a session's contract (`--session <id>`), or a stranded one (`--run <id>`); `--reason` is required and recorded |
+| `ratchet approve` | Allow one operational hard rule (`force-push`, `hard-reset`, `git-clean`) for the lead's contract; `--session <id>`; `--reason` is required and recorded |
 | `ratchet audit` | Validate every rule has a machine enforcer and a proof |
 | `ratchet doctor` | Check the install; `--harness codex,claude` verifies hooks, trust, and no-op behaviour |
 | `ratchet sync` | Write the managed `AGENTS.md` block; `--install` adds the OpenCode and git hooks |
 
 ## Evidence
 
-- **295 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **316 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
@@ -190,7 +214,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 ## Design principles
 
 - **No model backend.** The CLI does not generate replies and does not treat the model's prose as evidence.
-- **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope.
+- **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope. A worker only joins a lead through an explicit `ratchet task bind`.
 - **Scope is audited, not inferred.** The guard reads explicit write paths and shell hints; `done` compares the working tree with git. A write the classifier missed still refuses the close. This is what keeps the gate stable as shells, interpreters, and tools change.
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
 - **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
@@ -203,7 +227,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
   config.json
   rules.tsv                  rule -> layer -> enforcer -> proof
   install.json               adapters installed from this repo
-  current                    active run id
+  current                    last started run id; CLI fallback, not ownership
   events.jsonl               decisions made with no live contract
   runs/<id>/
     contract.json
@@ -216,7 +240,7 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, session-bound contracts and worker aliases, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
 
 Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 
