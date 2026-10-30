@@ -147,7 +147,7 @@ Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval i
 
 `--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
 
-The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest --thread <session-or-alias>` narrows the whole report to one thread's contracts. Digest v2 separates the worker-fix queue (`attention`) from `decisions` — amendments, approvals, out-of-scope runs, failing checks, and CI failures — and `exceptions`, the same items with run ids and a short reason. Every decision names the next command. `digest --root <path>` is repeatable and prints one rollup per project; there is no global registry. `digest` exits 1 when a worker fix or a human decision is outstanding. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
+The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest --thread <session-or-alias>` narrows the whole report to one thread's contracts. Digest v2 separates the worker-fix queue (`attention`) from `decisions` — amendments, approvals, out-of-scope runs, failing checks, and CI failures — and `exceptions`, the same items with run ids and a short reason. Every decision names the next command. `digest --root <path>` is repeatable and prints one rollup per project, even when that project has no runs yet; there is no global registry. `digest` exits 1 when a worker fix or a human decision is outstanding. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
 
 CI is evidence on demand, not a background ingest. `ratchet ci [--run <id>]` asks an authenticated `gh` for the run's commit (or `HEAD`) and prints `pass`, `fail`, `running`, or `unknown`. `evidence --ci` attaches that status to one certificate, and `digest --ci` asks for the current or latest run only, never every row. The answer is cached per commit in `.ratchet/ci-cache.json` for two minutes, so repeated reports do not hammer the API. A missing `gh`, a signed-out account, or a network failure is `unknown` with a reason; it never turns a run red or fails the command.
 
@@ -245,7 +245,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **352 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **353 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

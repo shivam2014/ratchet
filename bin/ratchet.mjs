@@ -1756,7 +1756,9 @@ function commandDigest(args) {
     }),
   }));
   const single = roots.length === 1;
-  if (single && !reports[0].digest.total) {
+  // An explicit `--root` always prints a rollup, even with no runs yet. The
+  // default (no --root) keeps the old "start a task" refusal.
+  if (single && !reports[0].digest.total && !requested.length) {
     fail(
       thread
         ? `No runs for thread ${thread}. Start one with: ratchet task start --session ${thread} --role coder --goal "..." --scope "src/**"`

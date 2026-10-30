@@ -171,6 +171,28 @@ test("digest CLI: --root prints one rollup per project, and one root keeps the v
   assert.equal((text.stdout.match(/RATCHET DIGEST/g) ?? []).length, 2);
 });
 
+test("digest CLI: an explicit --root with no runs prints a zero rollup", (t) => {
+  const dir = root(t);
+  const result = spawnSync(process.execPath, [BIN, "digest", "--root", dir], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RATCHET DIGEST/);
+  assert.match(result.stdout, /runs:       0/);
+  assert.match(result.stdout, /ratchet task start/);
+
+  const json = spawnSync(process.execPath, [BIN, "digest", "--root", dir, "--json"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.equal(json.status, 0, json.stderr);
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.total, 0);
+  assert.equal(parsed.root, dir);
+  assert.equal(parsed.healthy, true);
+});
+
 test("digest CLI: decisions and exceptions are printed with next commands", (t) => {
   const dir = root(t);
   run(dir, "20260101-wired", "2026-01-01T00:00:00.000Z", { events: 3 });

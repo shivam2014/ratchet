@@ -20,7 +20,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | Architecture boundaries | `test/architecture.test.mjs` | forbidden import caught, allowed import passes, require/export-from edges, cycles, no config no-op, `ratchet check` integration |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 352 tests, all passing.
+Total: 353 tests, all passing.
 
 ```bash
 npm test
