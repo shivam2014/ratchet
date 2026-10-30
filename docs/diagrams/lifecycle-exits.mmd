@@ -1,0 +1,24 @@
+%% title: Ratchet lifecycle exits
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+stateDiagram-v2
+    state "No contract" as Idle
+    state "Contract live" as Live
+    state "Refused" as Refused
+    state "Checks failing" as Failing
+    state "Check surface changed" as Changed
+    state "Changes outside scope" as Outside
+    state "Ready to close" as Ready
+
+    [*] --> Live
+    Live --> Ready: checks pass, surface clean
+    Idle --> Refused: write with no contract
+    Refused --> Idle: reads still allowed
+    Live --> Refused: write outside scope
+    Refused --> Live: fix and retry
+    Live --> Failing: check fails
+    Failing --> Live: fix and check
+    Live --> Changed: edit a check file
+    Changed --> Live: amend with reason
+    Ready --> Outside: git audit finds outside change
+    Outside --> Live: revert or widen scope

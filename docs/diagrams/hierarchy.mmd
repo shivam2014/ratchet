@@ -1,0 +1,15 @@
+%% title: Who the CEO talks to
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+flowchart TB
+  CEO["CEO · you"]
+  LEAD["Lead agent · thread"]
+  W1["Worker"]
+  W2["Worker"]
+  CEO --> LEAD
+  LEAD --> W1
+  LEAD --> W2
+  subgraph K["Ratchet kernel"]
+    C["contract"] --> G["guard"] --> E["evidence"] --> D["digest"]
+  end
+  LEAD -.-> C

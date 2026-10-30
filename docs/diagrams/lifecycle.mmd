@@ -1,0 +1,20 @@
+%% title: Ratchet lifecycle
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+stateDiagram-v2
+    state "No contract" as Idle
+    state "Contract live" as Live
+    state "Ready to close" as Ready
+    state "Done" as Done
+    state "Abandoned" as Abandoned
+    state "Stranded" as Stranded
+
+    [*] --> Idle
+    Idle --> Live: task start
+    Live --> Ready: checks pass, surface clean
+    Ready --> Done: done
+    Done --> [*]
+    Live --> Abandoned: abandon with reason
+    Abandoned --> [*]
+    Live --> Stranded: pointer lost
+    Stranded --> Abandoned: abandon --run

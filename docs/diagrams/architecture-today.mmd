@@ -1,0 +1,18 @@
+%% title: One checkout, two leads
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+flowchart TB
+  subgraph Shared["One checkout"]
+    A["Thread A · lead"]
+    B["Thread B · lead"]
+    C[".ratchet/current"]
+    D["one contract"]
+    E["one git index · one hook"]
+  end
+  A --> C
+  B --> C
+  C --> D
+  D --> E
+  E --> X["writes collide<br/>second start blocked"]
+  classDef bad fill:#3a1518,stroke:#e5484d,color:#ffb4b4
+  class X bad

@@ -1,0 +1,20 @@
+%% title: Now, next, later
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+flowchart LR
+  subgraph Now["Now · committed"]
+    N1["Requirements intake"]
+    N2["No verify, no contract"]
+    N3["CI status in evidence"]
+  end  subgraph Next["Next · validated"]
+    X1["Architecture checks in rules.tsv"]
+    X2["Per-project CEO digest"]
+  end
+  subgraph Later["Later · not committed"]
+    L1["Thread-bound contracts"]
+    L2["Kernel sandbox"]
+  end
+  N1 -->|intake confirms verify| N2
+  N2 -->|checks run in CI| N3
+  N3 --> X1
+  X2 --> L1

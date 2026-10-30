@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ratchet diagrams</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 28px; background: #0a0b0d; color: #f4f1ea; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.02em; }
+  p { color: #9aa0a8; margin: 0 0 24px; }
+  section { margin: 0 0 28px; }
+  h2 { font-size: 14px; margin: 0 0 8px; color: #7be0a3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
+  img { display: block; width: 100%; height: auto; background: #101216; border: 1px solid #24272d; border-radius: 10px; }
+  .note { color: #6f7680; font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Ratchet diagrams</h1>
+  <p>Sources are <code>.mmd</code>. These SVGs are rendered artifacts; do not edit them by hand.</p>
+
+  <section>
+    <h2>lifecycle</h2>
+    <img src="./lifecycle.svg" alt="Ratchet task lifecycle: idle, live, ready to close, done, abandoned, stranded.">
+    <div class="note">The main path: task start, checks pass, done. Plus abandon and stranded.</div>
+  </section>
+
+  <section>
+    <h2>lifecycle-exits</h2>
+    <img src="./lifecycle-exits.svg" alt="Ratchet lifecycle exits: refused writes, failing checks, changed check surface, changes outside scope.">
+    <div class="note">The exits from the live state, and how they return.</div>
+  </section>
+
+  <section>
+    <h2>architecture-today</h2>
+    <img src="./architecture-today.svg" alt="Two lead threads in one checkout share one contract, one index, and one hook.">
+    <div class="note">Why two threads in one checkout cannot both be the lead.</div>
+  </section>
+
+  <section>
+    <h2>architecture-target</h2>
+    <img src="./architecture-target.svg" alt="One worktree per lead thread, each with its own contract, index, and evidence.">
+    <div class="note">One thread, one lead, one contract.</div>
+  </section>
+
+  <section>
+    <h2>pyramid</h2>
+    <img src="./pyramid.svg" alt="The inverse pyramid: codebase architecture, static analysis, prose, human review, with current status.">
+    <div class="note">What is in place, partial, or missing.</div>
+  </section>
+
+  <section>
+    <h2>hierarchy</h2>
+    <img src="./hierarchy.svg" alt="The CEO talks to the lead agent thread, which delegates to workers; ratchet wraps every layer.">
+    <div class="note">Who you talk to, and what wraps all of them.</div>
+  </section>
+
+  <section>
+    <h2>roadmap</h2>
+    <img src="./roadmap.svg" alt="Now, next, later: requirements intake, no verify no contract, CI status, architecture checks, per-project digest, thread-bound contracts, kernel sandbox.">
+    <div class="note">Forecast, not a commitment. No dates.</div>
+  </section>
+</div>
+</body>
+</html>

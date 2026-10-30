@@ -1,0 +1,13 @@
+%% title: The inverse pyramid, current state
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+flowchart LR
+  L1["1 · Codebase architecture<br/>PARTIAL<br/>/architect gate · rules.tsv<br/>next: dependency and API checks"]
+  L2["2 · Static analysis<br/>STRONG<br/>verify · check lock · git audit<br/>next: CI status · coverage"]
+  L3["3 · Prose<br/>THIN<br/>AGENTS.md · brief · gates<br/>next: requirements intake"]
+  L4["4 · Human review<br/>PARTIAL<br/>evidence · digest<br/>next: decisions queue"]
+  L1 --> L2 --> L3 --> L4
+  classDef strong fill:#0f2e1c,stroke:#3dd68c,color:#b7f7d0
+  classDef partial fill:#3a2a10,stroke:#f5a524,color:#ffd89b
+  class L2 strong
+  class L1,L3,L4 partial

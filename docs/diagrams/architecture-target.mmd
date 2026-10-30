@@ -1,0 +1,12 @@
+%% title: One worktree per lead thread
+%% last_verified: 2026-10-30
+%% review_due: 2027-01-30
+flowchart LR
+  subgraph A["Worktree A"]
+    A1["Thread A · lead"] --> A2["contract A<br/>own current · own index"] --> A3["workers"]
+  end
+  subgraph B["Worktree B"]
+    B1["Thread B · lead"] --> B2["contract B<br/>own current · own index"] --> B3["workers"]
+  end
+  A3 --> CA["checks + evidence A"]
+  B3 --> CB["checks + evidence B"]

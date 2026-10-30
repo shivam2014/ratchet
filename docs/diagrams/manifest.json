@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "diagrams": {
+    "architecture-target": {
+      "source": "architecture-target.mmd",
+      "svg": "architecture-target.svg",
+      "sourceSha256": "9cc2861da7fc712a6fa55d0a823d8634e6f479206ca941e3c72e977be15e24a8",
+      "svgSha256": "0994dcb0e01acf528c7910ed257635740ec1ad8f571784fc114699431d4653b2"
+    },
+    "architecture-today": {
+      "source": "architecture-today.mmd",
+      "svg": "architecture-today.svg",
+      "sourceSha256": "f602332f73fd59bbd6fa0d704f1ef5dd5618b06f50b5ca7bc6dd2ab33b7bf75b",
+      "svgSha256": "00ac06de3be0c29bd6ac5a38226c5b23b374cbf4211a38c425056bd6d5f815c3"
+    },
+    "hierarchy": {
+      "source": "hierarchy.mmd",
+      "svg": "hierarchy.svg",
+      "sourceSha256": "30cf9bb460fe9990f15c81ce7363e716a67aabcc79ad6b30c576e6fc39fb47c3",
+      "svgSha256": "57f34adec2a36449093cf34524e5e7305c14c0c37eb5eac82e0775000bc09353"
+    },
+    "lifecycle-exits": {
+      "source": "lifecycle-exits.mmd",
+      "svg": "lifecycle-exits.svg",
+      "sourceSha256": "5b111257fa83c7dde51d552f81382af501bcb99ee37d09e784a3a655fe1425f4",
+      "svgSha256": "e4c175122246d23b77ea73a70fd1d96da8b1e6458998be4bd44ca41cc254cf21"
+    },
+    "lifecycle": {
+      "source": "lifecycle.mmd",
+      "svg": "lifecycle.svg",
+      "sourceSha256": "d27ba69124f4b86b0d1765527d7c4043c47d6a30851689b7b136e341a2fba47f",
+      "svgSha256": "812200bfb26dfe44c7ce60be2901e07508c33c3fb6b72c0994c84bac42dd2adc"
+    },
+    "pyramid": {
+      "source": "pyramid.mmd",
+      "svg": "pyramid.svg",
+      "sourceSha256": "986b0beaeb5d1120970ef4657f9eaa461baab9d3deb97d24145308d7ed1f0483",
+      "svgSha256": "94cd0c281c8b3facc394e1c60edd777c0e577df0619a7e9a74959cf39a1fc6ee"
+    },
+    "roadmap": {
+      "source": "roadmap.mmd",
+      "svg": "roadmap.svg",
+      "sourceSha256": "8510b40a0b7c5c919712470d271d85376dc6f4873587de0e467f975d4fe47b1e",
+      "svgSha256": "5f5dd14602eb8ad01a20399326656f190f68cf32c09fd2fc3bd3769f1ee17be9"
+    }
+  }
+}
