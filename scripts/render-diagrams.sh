@@ -14,4 +14,5 @@ for source in docs/diagrams/*.mmd; do
   bunx --bun @mermaid-js/mermaid-cli -i "$source" -o "${source%.mmd}.svg" -t dark -b transparent
 done
 
+node scripts/build-diagram-gallery.mjs
 node scripts/check-diagrams.mjs --update

@@ -14,7 +14,8 @@ Pictures of how ratchet works, kept as sources so they cannot quietly go stale.
 
 ## Rules
 
-- `.mmd` is the source of truth. Do not edit the `.svg` by hand.
+- `.mmd` is the source of truth. Do not edit the `.svg` or `index.html` by hand.
+- `index.html` is generated with every SVG inlined as a data URI, so it opens without the other files.
 - Every source carries `last_verified` and `review_due` comments. Review quarterly.
 - `manifest.json` binds each source hash to its svg hash. The check fails when one changes without the other.
 - A diagram that disagrees with the code is wrong. Regenerate or delete it.

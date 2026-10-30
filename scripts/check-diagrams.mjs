@@ -60,6 +60,15 @@ export function checkDiagrams({ update = false } = {}) {
     if (!next.diagrams[name]) errors.push(`${name}: manifest entry has no source`);
   }
 
+  const galleryFile = path.join(dir, "index.html");
+  const gallery = fs.existsSync(galleryFile) ? sha256(galleryFile) : null;
+  next.gallery = { file: "index.html", sha256: gallery };
+  if (!gallery) {
+    errors.push("index.html is missing; run scripts/render-diagrams.sh");
+  } else if (manifest.gallery?.sha256 !== gallery) {
+    errors.push("index.html is stale; run scripts/render-diagrams.sh");
+  }
+
   if (update) {
     fs.writeFileSync(manifestFile, `${JSON.stringify(next, null, 2)}\n`);
     return { errors: [], updated: true, count: sources.length };

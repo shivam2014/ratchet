@@ -43,5 +43,9 @@
       "sourceSha256": "8510b40a0b7c5c919712470d271d85376dc6f4873587de0e467f975d4fe47b1e",
       "svgSha256": "5f5dd14602eb8ad01a20399326656f190f68cf32c09fd2fc3bd3769f1ee17be9"
     }
+  },
+  "gallery": {
+    "file": "index.html",
+    "sha256": "f4a1de76f55db7a6ae797500716653f16483ddcbc12a107fe1825bdc21817e67"
   }
 }
