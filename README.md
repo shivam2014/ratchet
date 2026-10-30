@@ -153,6 +153,8 @@ The global view is two commands: `ratchet evidence` for one run (contract, check
 
 The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. With no live contract it falls back to the config's checks and warns that scope was not checked.
 
+For a deploy-style contract, start with `--require-clean`; then `check` and `done` refuse while tracked files are modified, so the certificate covers a commit rather than a dirty working tree. Build the artifact from a clean checkout (`git archive HEAD` or a dedicated worktree), never from the live build directory.
+
 ## Write fence (optional)
 
 A hook is policy. For a kernel boundary around bash writes, add this to `.ratchet/config.json`:
