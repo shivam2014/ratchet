@@ -260,7 +260,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
 - **CI is evidence on demand.** The CLI does not poll or ingest workflows. When asked, it reads one commit's status through `gh`, caches it briefly, and reports `unknown` rather than guessing.
 - **Boundaries are declared, not inferred.** `architecture.forbidden` and `architecture.cycles` make a narrow, deterministic check. It catches the edges the repo names; it does not claim to judge design.
-- **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
+- **Policy is not a sandbox by default.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The optional write fence (`sandbox.enabled`) makes bash a kernel boundary when the adapter can rewrite the command; it is off by default and does not cover write tools, reads, network, MCP, or subagents. The authority is still git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
 - **One rule table.** `ratchet audit` fails when a rule claims a machine layer but names no enforcer or no proof. A check that has never failed on a real past mistake is a guess.
 
 ## State
