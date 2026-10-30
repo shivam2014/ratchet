@@ -63,5 +63,19 @@ export const RatchetV1 = async ({ directory }) => ({
     if (result.status === 2) {
       throw new Error((result.stderr || result.stdout || "").trim() || "[ratchet] blocked by task contract");
     }
+
+    // OpenCode 1.x exposes the tool arguments as `output.args`, and mutating
+    // them is the documented way to change a call. 2.x uses a different shape;
+    // see ratchet.js.
+    let decision = null;
+    try {
+      decision = JSON.parse(result.stdout || "{}");
+    } catch {
+      decision = null;
+    }
+    const sandbox = decision?.sandbox;
+    if (tool === "bash" && sandbox?.enforced === true && typeof sandbox.command === "string" && sandbox.command) {
+      if (output?.args && typeof output.args === "object") output.args.command = sandbox.command;
+    }
   },
 });

@@ -179,6 +179,15 @@ export default {
         const reason = detail || (result.status === 0 ? "guard returned no decision" : `guard exited ${result.status} without a decision`);
         throw new Error(`[ratchet] ${reason}`);
       }
+
+      // 2.x runs the tool with the input returned from execute.before. The
+      // runtime's own input-repair plugin rewrites event.input the same way, so
+      // assigning the command here is a real rewrite, not a hint.
+      const sandbox = result.decision?.sandbox;
+      if (tool === "bash" && sandbox?.enforced === true && typeof sandbox.command === "string" && sandbox.command) {
+        if (event.input && typeof event.input === "object") event.input.command = sandbox.command;
+        else args.command = sandbox.command;
+      }
     });
 
     try {

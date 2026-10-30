@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { detectSandbox } from "../lib/sandbox.mjs";
 
 const BIN = path.join(import.meta.dirname, "..", "bin", "ratchet.mjs");
 const ADAPTER = path.join(import.meta.dirname, "..", "adapters", "opencode", "ratchet.js");
+const SANDBOX = detectSandbox();
+const SANDBOX_SKIP = SANDBOX.backend ? false : `no write fence backend: ${SANDBOX.reason}`;
 
 const loaded = await import(pathToFileURL(ADAPTER).href).then(
   (module) => ({ adapter: module.default }),
@@ -49,6 +52,13 @@ function start(dir) {
     "--verify", 'node -e "process.exit(0)"',
   ]);
   assert.equal(result.status, 0, result.stderr);
+}
+
+function setSandbox(dir, sandbox) {
+  const file = path.join(dir, ".ratchet", "config.json");
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.sandbox = sandbox;
+  fs.writeFileSync(file, JSON.stringify(config, null, 2));
 }
 
 async function harness(dir, opts = {}) {
@@ -212,4 +222,27 @@ test("opencode adapter: a crashing ratchet binary fails closed", { skip: skipped
     process.env.RATCHET_BIN = previous;
     fs.rmSync(crash, { force: true });
   }
+});
+
+test("opencode adapter: applies the sandbox rewrite to a bash command", { skip: skipped || SANDBOX_SKIP }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  setSandbox(dir, { enabled: true });
+  const adapter = await harness(dir);
+
+  const input = { command: "echo hello" };
+  assert.equal(adapter.before({ tool: "bash", input }), undefined);
+  assert.match(input.command, /sandbox-exec -p|bwrap/);
+});
+
+test("opencode adapter: does not rewrite a bash command when the sandbox is off", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  const adapter = await harness(dir);
+
+  const input = { command: "echo hello" };
+  assert.equal(adapter.before({ tool: "bash", input }), undefined);
+  assert.equal(input.command, "echo hello");
 });

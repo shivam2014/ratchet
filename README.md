@@ -66,7 +66,7 @@ A missing, malformed, or stale contract fails closed: writes are denied until a 
 Ratchet participates at three points only:
 
 1. **Before the loop.** `ratchet prompt` renders a deterministic Markdown brief from `contract.json`. It is string formatting, not generation.
-2. **During the loop.** The adapter sends one tool call as JSON to `ratchet guard`, which returns allow or deny from path, scope, and budget rules.
+2. **During the loop.** The adapter sends one tool call as JSON to `ratchet guard`, which returns allow or deny from path, scope, and budget rules. With `sandbox.enabled`, a bash allow also carries a fenced command; an adapter that can rewrite tool input applies it.
 3. **After the loop.** `ratchet check` runs the repo's own commands and records exit codes; `ratchet done` reads that evidence and refuses to close if any check failed.
 
 The adapter is deliberately thin. It normalises one tool call to JSON, calls `ratchet guard`, and blocks on exit 2. All policy lives in the CLI, so every harness gets the same rules.
@@ -153,6 +153,26 @@ The global view is two commands: `ratchet evidence` for one run (contract, check
 
 The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. With no live contract it falls back to the config's checks and warns that scope was not checked.
 
+## Write fence (optional)
+
+A hook is policy. For a kernel boundary around bash writes, add this to `.ratchet/config.json`:
+
+```json
+{ "sandbox": { "enabled": true, "required": false } }
+```
+
+Under a live contract, a bash call then gets a profile that allows reads everywhere and writes only under the static roots of the contract's `scope`, the repo's git directory, temp directories, and common caches. A read-only contract keeps its scope closed, and guard state under `.ratchet` (active pointer, config, kill switch, run contracts and evidence) stays denied even when `scope` is `**`. A write anywhere else fails with `EPERM` inside the kernel, even when the shell classifier missed it. `required: true` refuses bash when the fence cannot be applied.
+
+The backend is `sandbox-exec` (seatbelt) on macOS and `bubblewrap` when `bwrap` is installed on Linux. `ratchet doctor` reports the backend, and `ratchet status` prints it. Run one command under the live profile by hand:
+
+```bash
+ratchet sandbox -- npm test
+```
+
+The OpenCode adapters apply the rewrite in `execute.before`; they are the only adapters that can, because their runtime executes the tool with the input the hook returns. Other harnesses receive the profile as metadata, not enforcement, and `required: true` denies there instead of pretending.
+
+What the fence does not cover: write and edit tool calls (those are path-checked, not sandboxed), reads, network, and MCP or subagent calls that bypass the hook. It reopens the whole static root of each scope glob, not each matching file, and keeps `.git`, temp, and caches writable. A bare control command (`ratchet check`, `done`, `amend`, `abandon`, `sandbox`, or one `cd <dir> && ratchet ...`) runs outside the fence so it can write its own evidence; a compound command that includes it is fenced.
+
 ## Harnesses
 
 ```bash
@@ -164,8 +184,8 @@ ratchet status
 |---|---|---|
 | pi | `.pi/extensions/ratchet.ts`, `.pi/skills/ratchet-mode` | strong: `before_agent_start`, `tool_call`, `tool_result`, `agent_end` hooks |
 | Claude Code | `.claude/settings.json` PreToolUse hook, `.claude/skills/ratchet-mode` | strong: `PreToolUse` |
-| OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass |
-| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet; the plugin resolves the repo from each call because T3 roots one OpenCode instance at the app workspace |
+| OpenCode | `.opencode/plugins/ratchet.js` (v2 API; v1 fallback), `.agents/skills/ratchet-mode` | partial: built-in tools only; subagents and MCP may bypass. Its hook can rewrite a bash command, so the optional write fence is real there |
+| T3 Code | OpenCode provider plugin: tool guard and post-write checks; git/CI stop | partial: no T3-native prompt/stop yet; the plugin resolves the repo from each call because T3 roots one OpenCode instance at the app workspace. The OpenCode rewrite applies |
 | Codex | `.codex/hooks.json` PreToolUse hook, `.agents/skills/ratchet-mode` | strong for `Bash`, `apply_patch`, and MCP; hosted tools are not covered; requires hook trust |
 | Cursor | not auto-installed yet; same `PreToolUse` shape as Claude | strong, verify current hook config |
 
@@ -184,10 +204,10 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract (optionally `--session`), its age, every live contract in the checkout, stranded runs, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--session <id>` binds it to a thread; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract the caller owns and marks it abandoned |
-| `ratchet task status` | Show scope, budgets, check state, and session (`--session <id>` resolves the thread's contract) |
-| `ratchet task bind` | Attach a worker `--session` to the lead's contract (`--run <id>` or `--lead <session-id>`); the worker inherits the boundary |
-| `ratchet prompt` | Render the contract brief to inject into a system prompt (`--session <id>`) |
+| `ratchet task start` | Write a contract and make it current; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract and marks it abandoned |
+| `ratchet task status` | Show scope, budgets, and check state |
+| `ratchet sandbox` | Run a command under the live contract's write fence: `ratchet sandbox -- <command...>` |
+| `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, save evidence (`--session <id>`) |
 | `ratchet hook pre-commit` | Refuse staged paths outside scope or runtime state, then run the contract's verify commands |
@@ -204,7 +224,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **316 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **337 deterministic unit and CLI tests**, no network, all passing. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
@@ -217,7 +237,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 - **Fail closed.** Missing or malformed contracts block writes, and contracts are resolved per session so a sibling delegation cannot inherit another's scope. A worker only joins a lead through an explicit `ratchet task bind`.
 - **Scope is audited, not inferred.** The guard reads explicit write paths and shell hints; `done` compares the working tree with git. A write the classifier missed still refuses the close. This is what keeps the gate stable as shells, interpreters, and tools change.
 - **Evidence over prose.** The model's "done" message is not proof. The exit code of the repo's own checks is.
-- **Policy is not a sandbox.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The authority is git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
+- **Policy is not a sandbox by default.** A hook can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The optional write fence (`sandbox.enabled`) makes bash a kernel boundary on macOS and Linux when the adapter can rewrite the command; it is off by default and does not cover write tools, reads, network, MCP, or subagents. The authority is still git and CI: a pre-commit hook for local feedback, required checks and branch protection for the real boundary.
 - **One rule table.** `ratchet audit` fails when a rule claims a machine layer but names no enforcer or no proof. A check that has never failed on a real past mistake is a guess.
 
 ## State
@@ -240,14 +260,14 @@ Contracts and events are plain JSON so any harness, script, or CI job can read t
 
 ## Status
 
-v0.2.0. Implemented: explicit contracts, session-bound contracts and worker aliases, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, and CI. The default path is still an explicit `ratchet task start`.
+v0.2.0. Implemented: explicit contracts, `guard`, `check`, `done`, `audit`, `amend`, `abandon`, `approve`, the stop gate, opt-in prompt routing, installers for five harnesses, a git pre-commit hook, the optional bash write fence, and CI. The default path is still an explicit `ratchet task start`.
 
 Routing is opt-in: set `auto.enabled` in `.ratchet/config.json`, and `ratchet hook` creates a contract from the prompt at submit time. It reads the prompt locally, makes no model call, and stores a hash rather than the raw text by default. See [`docs/vision.md`](docs/vision.md).
 
 ## What this is not
 
 - **Not a replacement for pstack.** pstack is a library of engineering playbooks. Ratchet is the enforcement kernel those playbooks can call.
-- **Not a sandbox.** A hook is policy, not a boundary. For a real boundary, run the agent in a container or a read-only checkout and let CI be the authority.
+- **Not a sandbox by default.** A hook is policy, not a boundary. The optional write fence (`sandbox.enabled` in `.ratchet/config.json`) is a real kernel boundary for bash when it is enabled and the harness can rewrite the command; it is off by default and does not cover write/edit tools, MCP or subagent calls, reads, or the network. For the full boundary, run the agent in a container or a read-only checkout and let CI be the authority.
 - **Not a planner.** The contract is small on purpose.
 
 ## Docs

@@ -51,6 +51,20 @@ The adapter sends one JSON object on stdin:
 
 and exits 0 or 2. The adapter turns exit 2 into the harness's block primitive.
 
+## Write fence
+
+With `sandbox.enabled` in `.ratchet/config.json`, an allow decision for a bash call also carries:
+
+```json
+{ "sandbox": { "backend": "seatbelt", "profile": "(version 1) ...", "command": "...", "enforced": true } }
+```
+
+An adapter that can rewrite tool input replaces the command with `sandbox.command`. The OpenCode 2.x hook can: the runtime executes the tool with the input returned from `execute.before`, and the adapter assigns `event.input.command`. OpenCode 1.x mutates `output.args`. Every other adapter can only allow or deny, so `enforced` is false and the profile is metadata; `sandbox.required` turns that into a denial instead of a silent no-op.
+
+The fence is built from the live contract. It allows reads everywhere, denies `file-write*`, and reopens the static roots of `scope`, the repo's git directory, temp directories, common caches, and `/dev/null`. A read-only contract keeps its scope closed, and guard state under `.ratchet` stays denied even under a `**` scope. A write anywhere else fails with `EPERM` inside the kernel. It does not cover write/edit tools, reads, network, or MCP and subagent calls that bypass the hook.
+
+`ratchet sandbox -- <command...>` runs one command under the live profile without an adapter. `ratchet doctor` reports the backend and whether the installed OpenCode adapter has the rewrite.
+
 ## Post checks
 
 `post` in `.ratchet/config.json` holds fast commands that run after a write or bash tool event:
@@ -145,6 +159,8 @@ export default {
 The installer detects the OpenCode major version and writes the v2 file (`ratchet.js`) or the v1 file (`ratchet-v1.js`). A v1 plugin on a v2 runtime is skipped with a warning and no error, so the harness looks normal while the policy is off. Check for the plugin in the server log after any OpenCode upgrade.
 
 `ctx.directory` is undefined on 2.0. Use `ctx.location.directory`.
+
+The 2.x hook can also rewrite a bash command by assigning `event.input.command`, because the runtime executes the tool with the input returned from `execute.before`. Do this only when the decision carries `sandbox.enforced`, and reinstall the adapter after upgrading: a pre-sandbox copy ignores the rewrite and the policy silently becomes advisory.
 
 ### Codex
 
@@ -247,7 +263,7 @@ Does not see:
 
 ## What the hook cannot stop
 
-A hook is policy, not a boundary. A harness can:
+A hook is policy, not a boundary, unless the optional bash fence is enabled. Even then the fence covers only commands the adapter rewrites. Without it, a harness can:
 
 - disable or edit the plugin,
 - call an MCP tool that writes,
@@ -259,6 +275,7 @@ That is why the authoritative layers are outside the harness:
 
 | Layer | Stops |
 |---|---|
+| Optional bash fence (`sandbox.enabled`) | Writes outside the contract's static roots for a bash command the adapter rewrote |
 | Sandbox / container | Writes outside the mounted paths |
 | Read-only checkout | Any write for a read-only role |
 | Separate OS user | Writes to another user's files |
@@ -280,4 +297,4 @@ A correct block prints the reason on stderr and exits 2. If it exits 0, the adap
 
 ## Health check
 
-`ratchet doctor` reports whether the contract, checks, and OpenCode adapter exist. Add one line per adapter you install.
+`ratchet doctor` reports whether the contract, checks, and OpenCode adapter exist, which write fence backend is available, and whether the installed adapter can apply a sandbox rewrite. Add one line per adapter you install.

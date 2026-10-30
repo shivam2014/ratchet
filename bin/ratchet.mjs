@@ -52,6 +52,7 @@ import { cleanViolation } from "../lib/clean.mjs";
 import { buildEvidence, evidenceClean } from "../lib/evidence.mjs";
 import { buildDigest } from "../lib/digest.mjs";
 import { APPROVABLE_RULES } from "../lib/classify.mjs";
+import { detectSandbox, quote as shellQuote, runSandboxed } from "../lib/sandbox.mjs";
 import { routePrompt } from "../lib/route.mjs";
 import { auditRules } from "../lib/rules.mjs";
 import { syncAgents } from "../lib/agents-md.mjs";
@@ -984,6 +985,32 @@ function commandRun(args) {
   process.exit(commandStatus === 0 && checks.ok ? 0 : 1);
 }
 
+/**
+ * Run one command under the live contract's kernel write fence. This is the
+ * manual door to the same profile the OpenCode adapter applies to bash calls:
+ * useful for a one-off probe, a harness that cannot rewrite tool input, and the
+ * test suite. It always fences; use `ratchet check` for the control plane.
+ */
+function commandSandbox(args) {
+  const root = findRoot(process.cwd());
+  const contract = requireContract(root);
+  const command = args.positional;
+  if (!command.length) fail("usage: ratchet sandbox -- <command...>");
+  const detected = detectSandbox();
+  if (!detected.backend) fail(`sandbox unavailable: ${detected.reason}`);
+
+  const line = command.map((part) => shellQuote(part)).join(" ");
+  const result = runSandboxed(line, {
+    root,
+    contract,
+    cwd: process.cwd(),
+    timeoutMs: Number(args.one("timeout", 0)) || undefined,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exit(result.status);
+}
+
 function commandAudit(args) {
   const root = findRoot(process.cwd());
   const report = auditRules(root);
@@ -1114,6 +1141,30 @@ function commandDoctor(args) {
   add("checks configured", Boolean(config?.checks?.length), `${config?.checks?.length ?? 0}`, true);
   const contract = loadRun(root);
   add("active contract", Boolean(contract), contract?.id ?? "none");
+  const sandbox = detectSandbox();
+  add(
+    "sandbox",
+    Boolean(sandbox.backend),
+    sandbox.backend ? `${sandbox.backend} (${sandbox.bin})` : sandbox.reason,
+    Boolean(config?.sandbox?.required && !sandbox.backend),
+  );
+  // An installed adapter copy is what actually applies the rewrite. A
+  // pre-sandbox copy silently ignores the command, so name it instead of
+  // claiming enforcement.
+  if (config?.sandbox?.enabled) {
+    const adapters = (detectAdapters(root).get("opencode") ?? []).map((item) => item.path);
+    const rewrite = adapters.some((file) => readText(file, "").includes("sandbox"));
+    add(
+      "sandbox adapter rewrite",
+      rewrite,
+      adapters.length
+        ? rewrite
+          ? adapters.join(", ")
+          : `installed adapter predates the sandbox: ${adapters.join(", ")}; reinstall it`
+        : "no OpenCode adapter found",
+      Boolean(config.sandbox.required && !rewrite),
+    );
+  }
   add("rules.tsv", fs.existsSync(path.join(stateDir(root), "rules.tsv")), path.join(stateDir(root), "rules.tsv"));
   const disabled = disabledState(root);
   add("ratchet enabled", !disabled, disabled ? `DISABLED: ${disabled.reason}` : "enabled");
@@ -1377,6 +1428,8 @@ function commandStatus(args) {
   if (stranded.length) {
     out(`stranded: ${stranded.length} open run(s) with no pointer  (close with ratchet abandon --run <id> --reason "...")`);
   }
+  const sandbox = detectSandbox();
+  out(`sandbox: ${sandbox.backend ? `${sandbox.backend} (write fence available)` : `none (${sandbox.reason})`}`);
   const entries = Object.entries(manifest.installed);
   const listed = new Set(entries.flatMap(([, record]) => record.paths ?? []));
   const detected = detectAdapters(root);
@@ -1643,11 +1696,12 @@ usage:
   ratchet hook                                # normalized lifecycle event on stdin
   ratchet hook pre-commit                     # staged paths vs contract scope, then verify
   ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] [--require-clean] -- <command...>
-  ratchet check [--session <id>] [--timeout 120000]
-  ratchet done [--session <id>]
-  ratchet amend [--session <id>] --reason "..."  # re-baseline the locked check surface, on the record
-  ratchet abandon --reason "..." [--run <id> | --session <id>]  # close the live contract, or one stranded run
-  ratchet approve [--session <id>] --rule force-push --reason "..."  # allow one operational hard rule, on the record
+  ratchet sandbox -- <command...>             # run under the live contract's write fence
+  ratchet check [--timeout 120000]
+  ratchet done
+  ratchet amend --reason "..."                # re-baseline the locked check surface, on the record
+  ratchet abandon --reason "..." [--run <id>]  # close the live contract, or one stranded run
+  ratchet approve --rule force-push --reason "..."  # allow one operational hard rule, on the record
   ratchet audit [--json]
   ratchet doctor [--harness codex,claude|all]
   ratchet sync [--check] [--install]
@@ -1707,6 +1761,9 @@ switch (cmd) {
     break;
   case "run":
     commandRun(args);
+    break;
+  case "sandbox":
+    commandSandbox(args);
     break;
   case "check":
     commandCheck(args);

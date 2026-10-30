@@ -158,7 +158,7 @@ The adapters are thin. They normalize one harness event, call one CLI command, a
             teaches in a turn      cannot be talked around
 ```
 
-A hook is policy, not a sandbox. It can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The physical layers are a container or read-only checkout, branch protection, CODEOWNERS, and required checks. Ratchet makes the cheap path correct and the expensive path authoritative. It does not pretend a hook is physics.
+A hook is policy, not a sandbox. It can be bypassed by an unhooked tool, a subagent, an MCP call, or `--no-verify`. The physical layers are a container or read-only checkout, branch protection, CODEOWNERS, and required checks. The optional bash write fence (`sandbox.enabled`) is the exception: it is a kernel boundary for commands the adapter can rewrite, and it still leaves write tools, reads, network, MCP, and subagents outside. Ratchet makes the cheap path correct and the expensive path authoritative. It does not pretend a hook is physics.
 
 ### Components
 
@@ -302,7 +302,7 @@ A profile can extend another (`feature` extends `general`), so the common checks
 ## What this is not
 
 - **Not a model gateway (yet).** Ratchet does not hold API keys, proxy inference, or stream tokens. The hook-based router shapes context; the harness still talks to the provider. A gateway is a later option for hookless IDEs.
-- **Not a sandbox.** A hook can be bypassed. Containers, read-only checkouts, branch protection, and required checks are the hard boundary.
+- **Not a sandbox by default.** A hook can be bypassed. The optional bash write fence is a real kernel boundary for a bash command the adapter can rewrite, but it does not cover write tools, reads, network, MCP, or subagents. Containers, read-only checkouts, branch protection, and required checks are the hard boundary.
 - **Not an LLM judge.** No model decides whether the work passes. Models may help route skills; they do not certify.
 - **Not a model that plans for you.** Ratchet provides the plan structure, gates, and feedback loop; the model or orchestrator fills the plan. The contract stays small.
 - **Not a replacement for pstack.** pstack is a library of engineering playbooks. Ratchet is the enforcement kernel those playbooks can call.

@@ -73,6 +73,12 @@ This is the direct answer to "bounded by physical boundaries, not asked to invig
 
 Ratchet makes the cheap path correct and makes the expensive path authoritative. It does not pretend a hook is a sandbox.
 
+### The optional kernel fence
+
+A hook is policy. Since Phase 2, one part of the physical layer is available without a container: a bash write fence built from the contract. `lib/sandbox.mjs` renders a seatbelt profile on macOS (or a bubblewrap invocation where `bwrap` exists on Linux) that allows reads everywhere, denies `file-write*`, and reopens only the static roots of `scope`, the repo's git directory, temp directories, and common caches. Guard state under `.ratchet` is denied after the allows, so a `**` scope does not reopen the kill switch, pointer, contracts, or evidence. OpenCode's `execute.before` can rewrite `event.input.command`, so the adapter applies that profile for real; `ratchet sandbox -- <command>` applies it by hand. `sandbox.required` fails closed when no backend exists or the harness cannot rewrite.
+
+The fence closes the "unresolved bash mutation" hole, not the harness gap. It does not cover write/edit tools (those are path-checked), MCP or subagent calls that bypass the hook, reads, or network. It reopens the whole static root of each scope glob, not each matching file. The authority is still git and CI.
+
 ## 5. Why a CLI, not another skill library
 
 A skill is discovered by description and loaded into context. That works for judgment. It fails as a default for three reasons:
@@ -154,7 +160,7 @@ Enforced by: branch protection, review requirements, and the decision to automat
 | pi | `~/.pi/agent/skills`, `.agents/skills` | `tool_call` | subagents share the process; per-session routing needed | git + CI |
 | Claude Code | `~/.claude/skills`, `.claude/skills` | `PreToolUse` | hooks cover subagents in current versions; verify | git + CI |
 | Cursor | `.cursor/skills`, Agent Plugins | Hooks | verify subagent coverage | git + CI |
-| OpenCode | `.opencode/skills`, `.agents/skills` | `tool.execute.before` | known gaps: subagent calls and MCP tools may not fire the hook | git + CI |
+| OpenCode | `.opencode/skills`, `.agents/skills` | `tool.execute.before` | known gaps: subagent calls and MCP tools may not fire the hook; the hook can rewrite a bash command, so the optional fence is real there | git + CI |
 | T3 Code | T3-native (pending) | T3 lifecycle (pending adapter); ACP proxy | T3-owned tools may bypass | git + CI |
 | Codex | `.agents/skills`, `AGENTS.md` | `PreToolUse` (0.163+): Bash, apply_patch, MCP | Hosted tools do not use the local hook path; hooks need trust review | Sandbox + CI |
 
@@ -198,16 +204,18 @@ Do not rewrite it. Extract the kernel and keep the extension as the reference ad
 - Multi-harness installer with auto-detection, explicit `--harness` selection, `--user`/`--project` scope, `--dry-run`, a written manifest, and exact uninstall.
 - A recorded kill switch: `ratchet disable --reason`, `ratchet enable`, visible in `status` and `doctor`.
 - Write and bash guard with fail-closed scope, deny patterns, distinct-file and write budgets.
+- Optional bash write fence: seatbelt on macOS, bubblewrap on Linux, applied by the OpenCode adapter and by `ratchet sandbox -- <command>`; `sandbox.required` fails closed when it cannot be applied.
 - Coarse bash classification: redirects, write verbs, `git` write subcommands, package-manager mutations, hard denies.
 - Check runner with captured evidence and a `done` gate.
 - `rules.tsv` audit.
 - `AGENTS.md` sync with drift detection.
 - Adapters for pi, OpenCode, and Claude Code, plus a git pre-commit hook.
-- 17 tests, including an end-to-end contract/block/check/done proof.
+- 337 tests, including an end-to-end contract/block/check/done proof and a real seatbelt fence test.
 
 ## 11. What v0 does not implement
 
 - Full shell parsing. The pi classifier is stronger and should replace the coarse one.
+- A universal sandbox. The write fence covers bash commands the adapter can rewrite; write/edit tools, MCP calls, subagents, reads, and network are outside it. Linux uses `bwrap` when present and fails closed otherwise.
 - MCP tool interception. Treat MCP tools as out-of-scope mutations and gate them at the server or CI.
 - Subagent budget enforcement. The contract covers the parent's writes; per-child contracts are Phase 2.
 - Formal verification. Add TLA+/Alloy as a check type when a state machine needs it.
