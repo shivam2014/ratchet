@@ -42,6 +42,7 @@ import { evaluateStop } from "../lib/stop.mjs";
 import { runPostChecks } from "../lib/post-checks.mjs";
 import { computeCheckSurface, diffCheckSurface, lockCheckSurface } from "../lib/check-surface.mjs";
 import { taskChanges, taskScopeViolations } from "../lib/scope-audit.mjs";
+import { preCommitReport } from "../lib/precommit.mjs";
 import { buildEvidence, evidenceClean } from "../lib/evidence.mjs";
 import { buildDigest } from "../lib/digest.mjs";
 import { APPROVABLE_RULES } from "../lib/classify.mjs";
@@ -163,7 +164,7 @@ function commandInit(args) {
   const config = defaultConfig(root);
   saveConfig(root, config);
   ensureDir(path.join(stateDir(root), "runs"));
-  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\nevents.jsonl\n");
+  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\nevents.jsonl\ncurrent\ninstall.json\n");
   const rules = path.join(stateDir(root), "rules.tsv");
   if (!fs.existsSync(rules)) writeText(rules, "rule\tlayer\tenforcer\tproof\n");
   out(`ratchet init: ${root}`);
@@ -371,7 +372,61 @@ function commandGuard(args) {
   }
 }
 
-function commandHook() {
+function commandPreCommit(args) {
+  const root = findRoot(process.cwd());
+  const report = preCommitReport(root, {
+    timeoutMs: Number(args.one("timeout", 120000)),
+  });
+  if (report.skipped) {
+    out(`pre-commit: ${report.skipped}`);
+    return;
+  }
+  out(`staged: ${report.staged.length} file(s)`);
+  if (!report.contract) {
+    out("WARN  no active contract: staged paths are not checked against scope");
+  }
+  if (report.guard?.length) {
+    out("FAIL  guard state is staged:");
+    for (const p of report.guard) out(`  ${p}`);
+  }
+  if (report.outside?.length) {
+    out(
+      `FAIL  ${report.outside.length} staged path(s) outside scope [${(report.contract?.scope ?? []).join(", ")}]:`,
+    );
+    for (const p of report.outside.slice(0, 20)) out(`  ${p}`);
+  }
+  if (report.error) out(`FAIL  ${report.error}`);
+
+  if (report.checks) {
+    for (const r of report.checks.results) {
+      out(`${r.status === 0 ? "PASS" : "FAIL"}  ${r.id}  (${(r.durationMs / 1000).toFixed(1)}s)`);
+      if (r.status !== 0) {
+        if (r.failure) out(r.failure);
+        else if (r.stdout) out(r.stdout.split("\n").slice(-20).join("\n"));
+        if (r.stderr) out(r.stderr.split("\n").slice(-20).join("\n"));
+      }
+    }
+    if (report.checks.empty) out("FAIL  no checks ran");
+  }
+
+  if (!report.ok) {
+    out("");
+    if (report.guard?.length) {
+      out("Unstage runtime state: git restore --staged <path>");
+    }
+    if (report.outside?.length) {
+      out("Stage only paths in the live contract, or start a contract that includes them.");
+    }
+    process.exit(1);
+  }
+  out("pre-commit: pass");
+}
+
+function commandHook(args) {
+  if (args.positional[0] === "pre-commit") {
+    commandPreCommit(args);
+    return;
+  }
   const raw = fs.readFileSync(0, "utf8").trim();
   if (!raw) fail("hook expects a JSON event on stdin");
   let parsed;
@@ -1289,6 +1344,9 @@ function commandDigest(args) {
   out(`checks:     ${c.checksPass} pass · ${c.checksFail} fail · ${c.checksUnknown} unknown`);
   out(`scope:      ${c.outsideRuns} run(s) with outside changes`);
   out(`guard:      ${c.wired}/${c.runs} wired · ${c.events} events · ${c.denies} deny`);
+  if (digest.history?.blind) {
+    out(`history:    ${digest.history.blind} run(s) before guard wiring (not counted)`);
+  }
   out(`exceptions: ${c.amendments} amendment(s) · ${c.approvals} approval(s)`);
   out(`rules:      ${digest.rules.configured ? `${digest.rules.total} rule(s) · ${digest.rules.errors} error(s)` : "not configured"}`);
   if (healthy) {
@@ -1313,6 +1371,7 @@ usage:
   ratchet prompt [--json]                     # contract brief for the system prompt
   ratchet guard [--format claude|json]        # JSON event on stdin
   ratchet hook                                # normalized lifecycle event on stdin
+  ratchet hook pre-commit                     # staged paths vs contract scope, then verify
   ratchet run [--goal "..."] [--scope "src/**"] [--verify "npm test"] -- <command...>
   ratchet check [--timeout 120000]
   ratchet done
@@ -1368,7 +1427,7 @@ switch (cmd) {
     commandGuard(args);
     break;
   case "hook":
-    commandHook();
+    commandHook(args);
     break;
   case "run":
     commandRun(args);
