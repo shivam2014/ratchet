@@ -164,7 +164,7 @@ test("opencode adapter: task start is allowed when idle, denied with a live cont
   const live = await harness(dir);
   assert.throws(
     () => live.before({ tool: "bash", input: { command: 'ratchet task start --force --goal "y" --scope "**"' } }),
-    /guard-state mutation/,
+    /forced start would abandon/,
   );
 });
 
