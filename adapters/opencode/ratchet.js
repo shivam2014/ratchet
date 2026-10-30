@@ -104,6 +104,11 @@ function rootFor(tool, args, base) {
     const root = findRepoRoot(target);
     if (root) return root;
   }
+  // A write/edit names exactly where it wants to go. If that path is outside
+  // every ratchet repo, the call does not belong to the session's repo; stay
+  // out. Bash still falls back to the session directory because a command like
+  // `git status` names no path at all.
+  if (tool === "write") return null;
   return findRepoRoot(base);
 }
 
