@@ -34,18 +34,18 @@
     "pyramid": {
       "source": "pyramid.mmd",
       "svg": "pyramid.svg",
-      "sourceSha256": "986b0beaeb5d1120970ef4657f9eaa461baab9d3deb97d24145308d7ed1f0483",
-      "svgSha256": "94cd0c281c8b3facc394e1c60edd777c0e577df0619a7e9a74959cf39a1fc6ee"
+      "sourceSha256": "cc37e17a5996b9d47fc3848b8923e2b36eca079fdc9ccf4b643d50b2e2db33cb",
+      "svgSha256": "6e1abee493d12ee9e43f6cc7c0bc4c684f0ea3a3482ec88400c906d7a1a2e982"
     },
     "roadmap": {
       "source": "roadmap.mmd",
       "svg": "roadmap.svg",
-      "sourceSha256": "8510b40a0b7c5c919712470d271d85376dc6f4873587de0e467f975d4fe47b1e",
-      "svgSha256": "5f5dd14602eb8ad01a20399326656f190f68cf32c09fd2fc3bd3769f1ee17be9"
+      "sourceSha256": "2958faee91b1ae8c3069a6be214b739ef552d4db8d8c25fadd91fa05ae4200c2",
+      "svgSha256": "1a563362e78f2c23273592d069afc38b63eb9b365fa10410c4c93b89e7a88e8e"
     }
   },
   "gallery": {
     "file": "index.html",
-    "sha256": "f4a1de76f55db7a6ae797500716653f16483ddcbc12a107fe1825bdc21817e67"
+    "sha256": "9ef23feaa8c4c8aaab4db1bc43c31511b22efa56218638df61c994fd72db36c8"
   }
 }
