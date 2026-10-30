@@ -18,9 +18,16 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | Digest and evidence | `test/digest.test.mjs` | v1 count/thread behavior, v2 worker fixes vs decisions, exceptions with run ids, CI failure injection, `--root` rollups, next commands |
 | CI status | `test/ci.test.mjs` | pass/fail/running/unknown mapping, missing `gh`, unauthenticated `gh`, cache TTL, commit resolution, CLI exit codes |
 | Architecture boundaries | `test/architecture.test.mjs` | forbidden import caught, allowed import passes, require/export-from edges, cycles, no config no-op, `ratchet check` integration |
+| Thread contracts | `test/thread.test.mjs` | two session contracts in one checkout, alias binding, session-scoped close, forced-start ownership, digest `--thread`, shared-checkout warning |
+| Requirements brief | `test/brief.test.mjs` | scaffold, validate, missing sections, hash, `--require-brief`, `amend --brief` |
+| Verify gate | `test/verify.test.mjs` | empty list, no-op commands, compound commands, read-only exemption |
+| Kernel sandbox | `test/sandbox.test.mjs` | backend detection, profile roots, quoting, real Seatbelt allow/deny, adapter rewrite, CLI |
+| Pre-commit hook | `test/precommit.test.mjs` | staged scope, runtime state, ambiguous live contracts, no-contract fallback |
+| Clean-tree gate | `test/clean.test.mjs`, `test/clean-cli.test.mjs` | dirty start refusal, check/done refusal, untracked exemption |
+| Diagrams | `test/diagrams.test.mjs` | source/artifact freshness, self-contained gallery |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 353 tests, all passing.
+Total: 405 tests, all passing.
 
 ```bash
 npm test
