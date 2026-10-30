@@ -24,17 +24,22 @@ function repo(t) {
   return dir;
 }
 
-function ratchet(cwd, args) {
-  return spawnSync(process.execPath, [BIN, ...args], { cwd, encoding: "utf8" });
+function ratchet(cwd, args, env = {}) {
+  return spawnSync(process.execPath, [BIN, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
 }
 
-function start(dir, scope = "src/**") {
+function start(dir, scope = "src/**", session = null) {
   return ratchet(dir, [
     "task", "start",
     "--role", "coder",
-    "--goal", "precommit test",
+    "--goal", `precommit ${session ?? "manual"} ${scope}`,
     "--scope", scope,
     "--verify", "node --version",
+    ...(session ? ["--session", session] : []),
   ]);
 }
 
@@ -103,4 +108,20 @@ test("init: runtime state is ignored from the first commit", (t) => {
   const ignore = fs.readFileSync(path.join(dir, ".ratchet", ".gitignore"), "utf8");
   assert.match(ignore, /^current$/m);
   assert.match(ignore, /^install\.json$/m);
+});
+
+test("pre-commit: multiple live contracts require RATCHET_SESSION", (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  assert.equal(start(dir, "a/**", "ses-a").status, 0);
+  assert.equal(start(dir, "b/**", "ses-b").status, 0);
+  stage(dir, "a/x.ts");
+
+  const ambiguous = ratchet(dir, ["hook", "pre-commit"]);
+  assert.equal(ambiguous.status, 1);
+  assert.match(ambiguous.stdout, /set RATCHET_SESSION/);
+
+  const resolved = ratchet(dir, ["hook", "pre-commit"], { RATCHET_SESSION: "ses-a" });
+  assert.equal(resolved.status, 0, resolved.stdout + resolved.stderr);
+  assert.match(resolved.stdout, /pre-commit: pass/);
 });

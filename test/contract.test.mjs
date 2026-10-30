@@ -192,3 +192,15 @@ test("liveRuns: the pointer and session-bound runs are live, stranded runs are n
     [bound.id, manual.id].sort(),
   );
 });
+
+test("createContract: two contracts with the same goal do not overwrite each other", (t) => {
+  const root = temp(t);
+  const first = createContract(root, { goal: "same goal", role: "coder", scope: ["src/**"] });
+  saveContract(root, first);
+  const second = createContract(root, { goal: "same goal", role: "coder", scope: ["src/**"] });
+  saveContract(root, second);
+
+  assert.notEqual(first.id, second.id);
+  assert.equal(loadRun(root, first.id)?.id, first.id);
+  assert.equal(loadRun(root, second.id)?.id, second.id);
+});
