@@ -216,7 +216,7 @@ function commandInit(args) {
   const config = defaultConfig(root);
   saveConfig(root, config);
   ensureDir(path.join(stateDir(root), "runs"));
-  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\nevents.jsonl\ncurrent\ninstall.json\n");
+  writeText(path.join(stateDir(root), ".gitignore"), "runs/\nlast-check.json\nevents.jsonl\ncurrent\ninstall.json\nci-cache.json\n");
   const rules = path.join(stateDir(root), "rules.tsv");
   if (!fs.existsSync(rules)) writeText(rules, "rule\tlayer\tenforcer\tproof\n");
   out(`ratchet init: ${root}`);
