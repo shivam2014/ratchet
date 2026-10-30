@@ -124,9 +124,11 @@ Approvable rules are `force-push`, `hard-reset`, and `git-clean`. The approval i
 
 `--scope` takes one glob per flag; repeat it or use a comma-separated list (`--scope "src/**,tests/**"`). The default write budget is 120; pass `--max-writes` for a larger task.
 
-The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest` exits 1 when something needs a human.
+The global view is two commands: `ratchet evidence` for one run (contract, checks, changed paths, exceptions) and `ratchet digest` for the last 30 (done/open, checks, guard wiring, scope, rules). `digest` exits 1 when something needs a human. Blind runs that started before the adapter was first wired are reported as history, not as a current failure.
 
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`.
+
+The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. With no live contract it falls back to the config's checks and warns that scope was not checked.
 
 ## Harnesses
 
@@ -164,6 +166,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet prompt` | Render the contract brief to inject into a system prompt |
 | `ratchet guard` | Enforce one normalised tool event from stdin |
 | `ratchet check` | Run the contract's verification commands, save evidence |
+| `ratchet hook pre-commit` | Refuse staged paths outside scope or runtime state, then run the contract's verify commands |
 | `ratchet report` | Show the allow/deny trail for the current run; `--json` for machine output |
 | `ratchet evidence` | Per-run certificate: checks, changed paths, out-of-scope changes, amendments, approvals, rules; `--json` |
 | `ratchet digest` | Global view across recent runs: done/open, checks, guard wiring, scope, exceptions; exits 1 when something needs a human |
