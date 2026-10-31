@@ -209,10 +209,14 @@ test("sandbox: wrapCommand can produce an advisory plain command", () => {
   const wrapped = wrapCommand("echo x", { backend: null, enforce: false, profile: "(version 1)" });
   assert.equal(wrapped.enforced, false);
   assert.equal(wrapped.backend, null);
-  assert.deepEqual(wrapped.argv, ["/bin/sh", "-c", "echo x"]);
+  const expected =
+    process.platform === "win32"
+      ? [process.env.ComSpec || "cmd.exe", "/d", "/s", "/c", "echo x"]
+      : ["/bin/sh", "-c", "echo x"];
+  assert.deepEqual(wrapped.argv, expected);
 });
 
-test("sandbox: seatbelt argv keeps each argument separate", () => {
+test("sandbox: seatbelt argv keeps each argument separate", { skip: process.platform === "win32" }, () => {
   const wrapped = wrapCommand("echo 'hi there'", {
     backend: "seatbelt",
     bin: "/usr/bin/sandbox-exec",
@@ -230,7 +234,7 @@ test("sandbox: seatbelt argv keeps each argument separate", () => {
   assert.match(wrapped.command, /^\/usr\/bin\/sandbox-exec -p '/);
 });
 
-test("sandbox: bwrap binds the fence roots and chdirs", (t) => {
+test("sandbox: bwrap binds the fence roots and chdirs", { skip: process.platform === "win32" }, (t) => {
   const root = tempDir(t);
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.mkdirSync(path.join(root, ".git"), { recursive: true });
