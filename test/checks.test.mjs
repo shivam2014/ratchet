@@ -40,8 +40,8 @@ test("checks: timeout is a failure", (t) => {
   const root = temp(t);
   const report = runChecks(
     root,
-    [{ id: "slow", cmd: script(root, "slow.mjs", "setTimeout(() => {}, 5000);\n") }],
-    { timeoutMs: 100 },
+    [{ id: "slow", cmd: script(root, "slow.mjs", "setTimeout(() => {}, 1000);\n") }],
+    { timeoutMs: 50 },
   );
   assert.equal(report.ok, false);
   assert.notEqual(report.results[0].status, 0);
