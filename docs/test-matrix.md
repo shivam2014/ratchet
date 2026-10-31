@@ -24,13 +24,14 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | Kernel sandbox | `test/sandbox.test.mjs` | backend detection, profile roots, quoting, real Seatbelt allow/deny, adapter rewrite, CLI |
 | Pre-commit hook | `test/precommit.test.mjs` | staged scope, runtime state, ambiguous live contracts, no-contract fallback |
 | Clean-tree gate | `test/clean.test.mjs`, `test/clean-cli.test.mjs` | dirty start refusal, check/done refusal, untracked exemption |
+| User-scope contract | `test/user-scope.test.mjs` | `--user` roots at home, `~/` scope normalisation, narrow scope, repo contract still refuses outside paths |
 | Diagrams | `test/diagrams.test.mjs` | source/artifact freshness, self-contained gallery |
 | Platform core | `test/platform.test.mjs` | shell selection, `which` and PATHEXT, temp roots, path identity, sandbox guidance |
 | Windows classifier | `test/classify-windows.test.mjs` | cmd/PowerShell write verbs, drive and UNC paths, recursion, hard rules, fail-closed payloads |
 | WSL sandbox | `test/sandbox-wsl.test.mjs` | detection, drive/Git-Bash path translation, bwrap argv, base64 payload |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 470 tests; on non-Windows hosts 469 pass and one Windows-only sandbox check is skipped.
+Total: 474 tests; on non-Windows hosts 473 pass and one Windows-only sandbox check is skipped.
 
 ```bash
 npm test

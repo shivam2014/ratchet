@@ -249,12 +249,24 @@ test("opencode adapter: does not rewrite a bash command when the sandbox is off"
   assert.equal(input.command, "echo hello");
 });
 
-test("opencode adapter: a write outside every ratchet repo is not guarded", { skip: skipped }, async (t) => {
+test("opencode adapter: a write outside the repo is denied while a contract is live", { skip: skipped }, async (t) => {
   const dir = repo(t);
   assert.equal(ratchet(dir, ["init"]).status, 0);
   start(dir);
   const adapter = await harness(dir);
   const outside = path.join(os.homedir(), `ratchet-outside-${process.pid}.txt`);
+
+  assert.throws(
+    () => adapter.before({ tool: "write", input: { path: outside, content: "x" } }),
+    /outside scope/,
+  );
+});
+
+test("opencode adapter: a write outside the repo is not guarded while idle", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  const adapter = await harness(dir);
+  const outside = path.join(os.homedir(), `ratchet-outside-idle-${process.pid}.txt`);
 
   assert.equal(adapter.before({ tool: "write", input: { path: outside, content: "x" } }), undefined);
 });

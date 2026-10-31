@@ -114,6 +114,23 @@ The CLI runs on macOS, Linux, and Windows with Node >= 20. `npm link` puts `ratc
 
 CI runs the suite, the CLI stress matrix, the rule audit, and the diagram check on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Node 22. That matrix is the cross-platform proof. Cases that need a primitive the host does not have are skipped with a reason, not weakened.
 
+### User-level installs
+
+A repo contract cannot write `~/bin` or `~/.agents`. For an explicit setup task, use a scoped user contract:
+
+```bash
+ratchet task start --user --role coder \
+  --goal "install the atlas user commands" \
+  --scope "~/bin/**" --scope "~/.agents/**" \
+  --verify "node --version"
+# ...install, then:
+ratchet done
+```
+
+`--user` roots the contract at `$HOME`, creates `$HOME/.ratchet` on first use, and refuses `--scope "**"`; list the user paths instead. A nested repo's `.ratchet` still wins for paths inside that repo. This is the one sanctioned use of `$HOME` state: a narrow, explicit user contract, not a broad home contract.
+
+Editor `write`/`edit` calls inside a repo are guarded exactly like Bash. A write outside every ratchet repo is guarded when the session repo has a live contract, and left alone when it does not. Use `--user` when the task really is a user-level install; otherwise the refusal names the manual command.
+
 ## Quick start
 
 ```bash
@@ -272,7 +289,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 | `ratchet uninstall` | Remove only the files Ratchet recorded |
 | `ratchet status` | Show the contract (optionally `--session`), its age, every live contract in the checkout, stranded runs, installed harnesses, and enabled/disabled state |
 | `ratchet disable` / `enable` | Kill switch for the guard, with a recorded reason |
-| `ratchet task start` | Write a contract and make it current; `--session <id>` binds it to a thread; `--require-brief` locks a valid `.ratchet/requirements.md`; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract the caller owns and marks it abandoned |
+| `ratchet task start` | Write a contract and make it current; `--session <id>` binds it to a thread; `--user` roots a narrow setup contract at `$HOME`; `--require-brief` locks a valid `.ratchet/requirements.md`; `--pstack` gates source behind the plan and sketch artifacts; `--bend` gates Bend code behind `LAWS.bend`; `--force` replaces a live contract the caller owns and marks it abandoned |
 | `ratchet task status` | Show scope, budgets, check state, and session (`--session <id>` resolves the thread's contract) |
 | `ratchet task bind` | Attach a worker `--session` to the lead's contract (`--run <id>` or `--lead <session-id>`); the worker inherits the boundary |
 | `ratchet prompt` | Render the contract brief to inject into a system prompt (`--session <id>`) |
@@ -294,7 +311,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **470 deterministic unit and CLI tests**, no network. On non-Windows hosts 469 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
+- **474 deterministic unit and CLI tests**, no network. On non-Windows hosts 473 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

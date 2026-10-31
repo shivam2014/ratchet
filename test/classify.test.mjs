@@ -214,4 +214,6 @@ test("classify: task start is only guarded when forced", () => {
   assert.equal(classifyBash("ratchet abandon --reason x && ratchet check && ratchet task start --goal y --scope '**'").hardDeny, false);
   assert.equal(classifyBash("ratchet task start --force --goal x --scope '**'").hardDeny, true);
   assert.equal(classifyBash("ratchet disable --reason x").hardDeny, true);
+  assert.equal(classifyBash("ratchet install --help").hardDeny, false);
+  assert.equal(classifyBash("ratchet install --harness opencode --user").hardDeny, true);
 });

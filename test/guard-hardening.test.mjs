@@ -297,3 +297,10 @@ test("hardening: git add inside scope stays allowed", (t) => {
   const decision = decide(root, ev("bash", { command: "git add src/a.ts" }));
   assert.equal(decision.allow, true);
 });
+
+test("hardening: the .ratchet directory is guard state, not a scope edge", (t) => {
+  const root = repo(t, { scope: ["package.json", ".ratchet/**"] });
+  const decision = decide(root, ev("bash", { command: "git add .ratchet" }));
+  assert.equal(decision.allow, false);
+  assert.match(decision.reason, /guard state/);
+});

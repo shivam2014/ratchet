@@ -108,11 +108,14 @@ function rootFor(tool, args, base) {
     const root = findRepoRoot(target);
     if (root) return root;
   }
-  // A write/edit names exactly where it wants to go. If that path is outside
-  // every ratchet repo, the call does not belong to the session's repo; stay
-  // out. Bash still falls back to the session directory because a command like
-  // `git status` names no path at all.
-  if (tool === "write") return null;
+  // A write/edit outside every ratchet repo is only in scope when the session
+  // repo has a live contract. Then the guard sees the absolute path and
+  // refuses it consistently with Bash. With no live contract, stay out.
+  if (tool === "write") {
+    const baseRoot = findRepoRoot(base);
+    if (baseRoot && fs.existsSync(path.join(baseRoot, ".ratchet", "current"))) return baseRoot;
+    return null;
+  }
   return findRepoRoot(base);
 }
 

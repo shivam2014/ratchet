@@ -502,10 +502,47 @@ function commandTaskBind(root, args, sessionId) {
   out("the worker inherits this contract's scope, budgets, checks, and evidence");
 }
 
+/**
+ * User-scope state lives at $HOME/.ratchet. It is explicit: `task start --user`
+ * creates it, and a nested repo's .ratchet still wins for paths inside that
+ * repo because the adapter walks up from the target.
+ */
+function ensureUserState(root) {
+  const existing = loadConfig(root);
+  if (existing) return existing;
+  const config = defaultConfig(root);
+  saveConfig(root, config);
+  ensureDir(path.join(stateDir(root), "runs"));
+  writeText(
+    path.join(stateDir(root), ".gitignore"),
+    "runs/\nlast-check.json\nevents.jsonl\ncurrent\ninstall.json\nci-cache.json\n",
+  );
+  const rules = path.join(stateDir(root), "rules.tsv");
+  if (!fs.existsSync(rules)) writeText(rules, "rule\tlayer\tenforcer\tproof\n");
+  out(`user state: ${path.join(root, ".ratchet")}`);
+  return config;
+}
+
+/** Scope globs are repo-relative. Accept ~/ and absolute forms inside the root. */
+function normaliseScope(root, value) {
+  let text = String(value).replaceAll("\\", "/");
+  if (text === "~") text = root;
+  else if (text.startsWith("~/")) text = path.join(root, text.slice(2));
+  if (path.isAbsolute(text)) {
+    const rel = path.relative(root, text);
+    if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      fail(`--scope ${value} is outside ${root}`);
+    }
+    text = rel.split(path.sep).join("/");
+  }
+  return text;
+}
+
 function commandTask(args) {
   const sub = args.positional[0];
-  const root = findRoot(process.cwd());
-  const config = requireConfig(root);
+  const userMode = args.has("user");
+  const root = userMode ? os.homedir() : findRoot(process.cwd());
+  const config = userMode ? ensureUserState(root) : requireConfig(root);
   const sessionId = flagValue(args, "session");
 
   if (sub === "status") {
@@ -530,7 +567,7 @@ function commandTask(args) {
 
   if (sub !== "start") {
     fail(
-      'usage: ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**"\n' +
+      'usage: ratchet task start [--session <id>] [--user] --role coder --goal "..." --scope "src/**"\n' +
         "       ratchet task status [--session <id>]\n" +
         "       ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]",
     );
@@ -670,7 +707,14 @@ function commandTask(args) {
   if (!goal) fail("task start needs --goal \"...\"");
   const role = String(args.one("role", "coder"));
   const readOnly = taskReadOnly(args);
-  const scope = args.all("scope").length ? splitGlobs(args.all("scope")) : config.defaults?.scope ?? [];
+  const scope = (args.all("scope").length ? splitGlobs(args.all("scope")) : config.defaults?.scope ?? [])
+    .map((value) => normaliseScope(root, value));
+  if (userMode && !readOnly && scope.includes("**")) {
+    fail(
+      '--user refuses --scope "**": it would cover every path under the home directory. ' +
+        'List the user paths instead, for example --scope "~/bin/**" --scope "~/.agents/**".',
+    );
+  }
   for (const value of args.all("scope")) {
     if (/\s/.test(String(value).trim()) && !String(value).includes(",")) {
       fail('--scope takes one glob per flag. Repeat --scope, or separate globs with commas: --scope "src/**,tests/**"');
@@ -2194,7 +2238,7 @@ function usage() {
 usage:
   ratchet init [--force]
   ratchet brief [--init] [--check] [--from <file>] [--force]  # requirements intake
-  ratchet task start [--session <id>] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--require-brief] [--require-clean] [--pstack] [--bend] [--force]
+  ratchet task start [--session <id>] [--user] --role coder --goal "..." --scope "src/**" [--scope "tests/**"] [--max-files N] [--max-writes N] [--verify "npm test"] [--require-brief] [--require-clean] [--pstack] [--bend] [--force]
   ratchet task status [--session <id>]
   ratchet task bind --session <child-id> [--run <id> | --lead <session-id>]
   ratchet report [--session <id>] [--json]    # allow/deny trail for the current run
