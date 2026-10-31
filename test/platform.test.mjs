@@ -107,7 +107,7 @@ test("platform: which returns null instead of assuming sh on Windows", (t) => {
   assert.equal(which("missing", { platform: "win32", env: {} }), null);
 });
 
-test("platform: which scans POSIX PATH for an executable file", (t) => {
+test("platform: which scans POSIX PATH for an executable file", { skip: process.platform === "win32" }, (t) => {
   const dir = tempDir(t);
   const tool = path.join(dir, "tool");
   touch(tool, "#!/bin/sh\nexit 0\n", 0o755);
@@ -120,7 +120,7 @@ test("platform: which scans POSIX PATH for an executable file", (t) => {
 
 // --- temp roots -----------------------------------------------------------
 
-test("platform: tempRoots includes the POSIX roots and resolves real paths", () => {
+test("platform: tempRoots includes the POSIX roots and resolves real paths", { skip: process.platform === "win32" }, () => {
   const roots = tempRoots({
     platform: "linux",
     tmpdir: "/tmp",
