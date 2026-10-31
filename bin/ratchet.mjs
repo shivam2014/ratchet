@@ -1300,6 +1300,9 @@ function commandRun(args) {
   const started = Date.now();
   const child = spawnSync(command[0], command.slice(1), {
     cwd: root,
+    // Windows resolves npm/npx/yarn through .cmd shims; without a shell the
+    // spawn fails with ENOENT even though the command is on PATH.
+    shell: process.platform === "win32",
     stdio: "inherit",
     env: {
       ...process.env,
@@ -1396,7 +1399,7 @@ function adapterNoops(adapterPath, event) {
 function harnessChecks(repoRoot, requested, root) {
   const checks = [];
   const add = (name, ok, detail, hard = true) => checks.push({ name, ok, detail, hard });
-  const home = process.env.HOME || "";
+  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
 
   if (requested.includes("codex")) {
     const dir = codexHome(home);
@@ -1536,7 +1539,7 @@ function installContext(root, args) {
   return {
     root,
     repoRoot: path.join(import.meta.dirname, ".."),
-    home: process.env.HOME || "",
+    home: process.env.HOME || process.env.USERPROFILE || os.homedir(),
     scope: args.has("user") || args.has("global") ? "user" : "project",
     force: args.has("force"),
     dryRun: args.has("dry-run"),
@@ -1697,7 +1700,7 @@ function commandEnable() {
 
 /** Adapter files that exist on disk even when no manifest in this repo records them. */
 function detectAdapters(root) {
-  const home = process.env.HOME || "";
+  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   const found = new Map();
   const add = (name, file, scope) => {
     if (!file || !fs.existsSync(file)) return;
