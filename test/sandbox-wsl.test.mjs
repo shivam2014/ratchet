@@ -62,7 +62,8 @@ test("sandbox: wsl-bwrap wraps bwrap inside wsl.exe", (t) => {
   assert.deepEqual(wrapped.argv.slice(1, 3), ["--exec", "/usr/bin/bwrap"]);
   assert.ok(wrapped.argv.includes("/bin/sh"));
   assert.ok(wrapped.argv.includes("--chdir"));
-  assert.match(wrapped.command, /wsl\.exe --exec/);
+  assert.match(wrapped.command, /wsl\.exe/);
+  assert.match(wrapped.command, /--exec/);
 });
 
 test("sandbox: a POSIX backend on Windows is refused", (t) => {
@@ -83,4 +84,18 @@ test("sandbox: a POSIX backend on Windows is refused", (t) => {
 test("sandbox: Git Bash drive paths map to /mnt/<drive> on Windows", () => {
   assert.equal(toWslPath("/c/repo/src", { platform: "win32" }), "/mnt/c/repo/src");
   assert.equal(toWslPath("/c/repo/src", { platform: "linux" }), "/c/repo/src");
+});
+
+test("sandbox: the WSL command carries the payload as base64", (t) => {
+  const root = repo(t);
+  const wrapped = wrapCommand("echo ok", {
+    platform: "win32",
+    root,
+    contract: { scope: ["**"] },
+    backend: "wsl-bwrap",
+    bin: "wsl.exe",
+    bwrap: "/usr/bin/bwrap",
+  });
+  assert.match(wrapped.command, /base64 -d/);
+  assert.doesNotMatch(wrapped.command, /echo ok/);
 });
