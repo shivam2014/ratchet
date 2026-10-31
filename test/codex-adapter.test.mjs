@@ -279,7 +279,7 @@ const userHooks = {
 function handlersFor(settings, event) {
   return (settings?.hooks?.[event] ?? [])
     .flatMap((group) => group.hooks ?? [])
-    .filter((handler) => typeof handler.command === "string" && handler.command.includes("adapters/codex/hook.mjs"));
+    .filter((handler) => typeof handler.command === "string" && /adapters[\\/]codex[\\/]hook\.mjs/.test(handler.command));
 }
 
 test("mergeCodexHooks splits a mixed group and keeps unrelated handlers", () => {
