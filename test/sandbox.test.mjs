@@ -115,7 +115,7 @@ test(
 // --- profile ----------------------------------------------------------------
 
 test("sandbox: a glob becomes its static directory prefix", () => {
-  const root = "/repo";
+  const root = path.resolve("/repo");
   assert.equal(staticPrefix(root, "**"), root);
   assert.equal(staticPrefix(root, "src/**"), path.join(root, "src"));
   assert.equal(staticPrefix(root, "src/*.mjs"), path.join(root, "src"));
