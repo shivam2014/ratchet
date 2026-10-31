@@ -292,7 +292,7 @@ test("install: claude dry run plans the hooks and writes nothing", (t) => {
 
   const dry = ratchet(dir, ["install", "--harness", "claude", "--project", "--yes", "--dry-run"]);
   assert.equal(dry.status, 0, dry.stderr);
-  assert.match(dry.stdout, /create .*\.claude\/settings\.json/);
+  assert.match(dry.stdout, /create .*\.claude[\\/]settings\.json/);
   assert.match(dry.stdout, /dry run: nothing written/);
   assert.equal(fs.existsSync(settingsFile), false);
 

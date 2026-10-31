@@ -252,7 +252,7 @@ test("install: codex hook is merged, idempotent, and removable", () => {
   assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const first = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
   for (const event of lifecycle) assert.equal(first.hooks[event].length, 1, event);
-  assert.match(first.hooks.PreToolUse[0].hooks[0].command, /adapters\/codex\/hook\.mjs/);
+  assert.match(first.hooks.PreToolUse[0].hooks[0].command, /adapters[\\/]codex[\\/]hook\.mjs/);
 
   assert.equal(ratchet(dir, ["install", "--harness", "codex", "--project", "--yes"], undefined, env).status, 0);
   const second = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
