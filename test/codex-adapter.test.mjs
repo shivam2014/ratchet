@@ -260,7 +260,9 @@ test("codex adapter: every lifecycle event no-ops outside a Ratchet repo", (t) =
 function isolatedEnv(t) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-codex-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  return { HOME: home, CODEX_HOME: path.join(home, ".codex") };
+  // HOME is the POSIX home; USERPROFILE is the Windows one. Set both so the
+  // isolation survives whichever home the CLI reads.
+  return { HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, ".codex") };
 }
 
 const userHooks = {

@@ -6,6 +6,9 @@ import path from "node:path";
 import { createContract, saveContract } from "../lib/contract.mjs";
 import { decide, loadState, record } from "../lib/decide.mjs";
 import { readJsonl } from "../lib/fsx.mjs";
+import { linkDir, outsideDir, symlinkSkip } from "./helpers.mjs";
+
+const LINK_SKIP = symlinkSkip("decide needs a directory link");
 
 function emptyRepo(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-decide-"));
@@ -82,7 +85,7 @@ test("decide: temp paths outside the repo are allowed", (t) => {
 
 test("decide: temp writes are allowed with no contract", (t) => {
   const root = emptyRepo(t);
-  const bash = decide(root, event("bash", { command: "rm -rf ratchet-probe", workdir: "/tmp" }));
+  const bash = decide(root, event("bash", { command: "rm -rf ratchet-probe", workdir: os.tmpdir() }));
   assert.equal(bash.allow, true);
   assert.match(bash.reason, /temp/);
 
@@ -204,20 +207,21 @@ test("decide: deny list matches case variants", (t) => {
   assert.equal(decide(root, event("write", { path: "src/a.ts" })).allow, true);
 });
 
-test("decide: a symlink cannot escape to a non-temp path", (t) => {
+test("decide: a symlink cannot escape to a non-temp path", { skip: LINK_SKIP }, (t) => {
   const { root } = repo(t);
+  const outside = outsideDir(t, "decide-escape-");
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
-  fs.symlinkSync("/etc", path.join(root, "src", "out"));
+  linkDir(outside, path.join(root, "src", "out"));
 
   const decision = decide(root, event("write", { path: "src/out/hosts" }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /outside scope/);
 });
 
-test("decide: a symlink inside the scope still works", (t) => {
+test("decide: a symlink inside the scope still works", { skip: LINK_SKIP }, (t) => {
   const { root } = repo(t);
   fs.mkdirSync(path.join(root, "src", "real"), { recursive: true });
-  fs.symlinkSync(path.join(root, "src", "real"), path.join(root, "src", "link"));
+  linkDir(path.join(root, "src", "real"), path.join(root, "src", "link"));
 
   const decision = decide(root, event("write", { path: "src/link/a.ts" }));
   assert.equal(decision.allow, true);

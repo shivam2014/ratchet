@@ -6,8 +6,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { detectSandbox } from "../lib/sandbox.mjs";
+import { BIN, shimRatchet } from "./helpers.mjs";
 
-const BIN = path.join(import.meta.dirname, "..", "bin", "ratchet.mjs");
 const ADAPTER = path.join(import.meta.dirname, "..", "adapters", "opencode", "ratchet.js");
 const SANDBOX = detectSandbox();
 const SANDBOX_SKIP = SANDBOX.backend ? false : `no write fence backend: ${SANDBOX.reason}`;
@@ -32,9 +32,7 @@ function repo(t) {
     path.join(dir, "package.json"),
     JSON.stringify({ name: "opencode-adapter", private: true, scripts: { check: 'node -e "process.exit(0)"' } }, null, 2),
   );
-  const shim = path.join(bin, "ratchet");
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`);
-  fs.chmodSync(shim, 0o755);
+  const shim = shimRatchet(bin);
   process.env.RATCHET_BIN = shim;
   return dir;
 }
@@ -212,9 +210,7 @@ test("opencode adapter: a crashing ratchet binary fails closed", { skip: skipped
   start(dir);
   const adapter = await harness(dir);
   const previous = process.env.RATCHET_BIN;
-  const crash = path.join(path.dirname(previous), "ratchet-crash");
-  fs.writeFileSync(crash, "#!/bin/sh\nexit 1\n");
-  fs.chmodSync(crash, 0o755);
+  const crash = shimRatchet(path.dirname(previous), { name: "ratchet-crash", exit: 1 });
   process.env.RATCHET_BIN = crash;
   try {
     assert.throws(() => adapter.before({ tool: "write", input: { path: "src/a.ts" } }), /guard exited 1|without a decision/);

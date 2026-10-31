@@ -37,6 +37,40 @@ function saveEnv(keys) {
   };
 }
 
+/**
+ * Node cannot spawn a `.cmd` command shim on Windows without `shell: true`,
+ * and lib/ci.mjs spawns "gh" directly. Probe the platform once: where a stub
+ * is not runnable, the gh-backed tests are skipped with that exact reason
+ * instead of failing on a fixture limitation.
+ */
+function commandShimRuns() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-gh-probe-"));
+  const marker = "ratchet-gh-shim";
+  try {
+    if (process.platform === "win32") {
+      fs.writeFileSync(path.join(dir, "gh.cmd"), `@echo off\r\necho ${marker}\r\n`);
+    } else {
+      const gh = path.join(dir, "gh");
+      fs.writeFileSync(gh, `#!/bin/sh\necho ${marker}\n`);
+      fs.chmodSync(gh, 0o755);
+    }
+    const probe = spawnSync("gh", ["--probe"], {
+      env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` },
+      encoding: "utf8",
+    });
+    return probe.status === 0 && String(probe.stdout).includes(marker);
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const GH_SKIP = commandShimRuns()
+  ? false
+  : "the fake gh command shim cannot run on this platform (native Windows cannot spawn a .cmd without a shell)";
+const ghTest = (name, fn) => test(name, { skip: GH_SKIP }, fn);
+
 /** Put a fake `gh` first on PATH; it logs argv and prints a fixed response. */
 function fakeGh(t, response, { exit = 0, stderr = "" } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-gh-"));
@@ -99,7 +133,7 @@ test("ci: classifyRun maps gh conclusions to four states", () => {
   assert.equal(classifyRun(null), "unknown");
 });
 
-test("ci: a completed successful run is a pass", (t) => {
+ghTest("ci: a completed successful run is a pass", (t) => {
   const dir = root(t);
   fakeGh(t, PASS);
   const status = ciStatus(dir, "abc123");
@@ -111,7 +145,7 @@ test("ci: a completed successful run is a pass", (t) => {
   assert.match(status.reason, /ci succeeded/);
 });
 
-test("ci: a failed run is a fail with the workflow named", (t) => {
+ghTest("ci: a failed run is a fail with the workflow named", (t) => {
   const dir = root(t);
   fakeGh(t, [{ ...PASS[0], conclusion: "failure" }]);
   const status = ciStatus(dir, "abc123");
@@ -119,13 +153,13 @@ test("ci: a failed run is a fail with the workflow named", (t) => {
   assert.match(status.reason, /ci concluded failure/);
 });
 
-test("ci: an in-progress run is running", (t) => {
+ghTest("ci: an in-progress run is running", (t) => {
   const dir = root(t);
   fakeGh(t, [{ ...PASS[0], status: "in_progress", conclusion: "" }]);
   assert.equal(ciStatus(dir, "abc123").state, "running");
 });
 
-test("ci: no workflow run for the commit is unknown, not a failure", (t) => {
+ghTest("ci: no workflow run for the commit is unknown, not a failure", (t) => {
   const dir = root(t);
   fakeGh(t, []);
   const status = ciStatus(dir, "abc123");
@@ -146,7 +180,7 @@ test("ci: missing gh is unknown with a next step", (t) => {
   assert.equal(status.url, null);
 });
 
-test("ci: an unauthenticated gh is unknown with a login hint", (t) => {
+ghTest("ci: an unauthenticated gh is unknown with a login hint", (t) => {
   const dir = root(t);
   fakeGh(t, [], { exit: 1, stderr: "To get started with GitHub CLI, please run: gh auth login" });
   const status = ciStatus(dir, "abc123");
@@ -155,7 +189,7 @@ test("ci: an unauthenticated gh is unknown with a login hint", (t) => {
   assert.match(status.reason, /gh auth login/);
 });
 
-test("ci: a commit is cached for the TTL and refreshed after it", (t) => {
+ghTest("ci: a commit is cached for the TTL and refreshed after it", (t) => {
   const dir = root(t);
   const gh = fakeGh(t, PASS);
   assert.equal(ciStatus(dir, "abc123").state, "pass");
@@ -172,7 +206,7 @@ test("ci: a commit is cached for the TTL and refreshed after it", (t) => {
   assert.equal(gh.calls().length, 2);
 });
 
-test("ci: the cache lives in .ratchet and ignores itself", (t) => {
+ghTest("ci: the cache lives in .ratchet and ignores itself", (t) => {
   const dir = root(t);
   fakeGh(t, PASS);
   ciStatus(dir, "abc123");
@@ -190,7 +224,7 @@ test("ci: commitForRun prefers the closing HEAD, then the contract base", (t) =>
   assert.equal(commitForRun(dir, { id: "run-b", baseCommit: "base-b" }), "base-b");
 });
 
-test("ci CLI: prints HEAD status when there is no run", (t) => {
+ghTest("ci CLI: prints HEAD status when there is no run", (t) => {
   const dir = root(t);
   spawnSync("git", ["init", "-q"], { cwd: dir });
   fs.writeFileSync(path.join(dir, "a.txt"), "a\n");
@@ -210,7 +244,7 @@ test("ci CLI: prints HEAD status when there is no run", (t) => {
   assert.equal(gh.calls().length, 1);
 });
 
-test("ci CLI: a failed run exits 1 and names the log command", (t) => {
+ghTest("ci CLI: a failed run exits 1 and names the log command", (t) => {
   const dir = root(t);
   spawnSync("git", ["init", "-q"], { cwd: dir });
   fs.writeFileSync(path.join(dir, "a.txt"), "a\n");
@@ -227,7 +261,7 @@ test("ci CLI: a failed run exits 1 and names the log command", (t) => {
   assert.match(result.stdout, /gh run view 42 --log-failed/);
 });
 
-test("ci: evidence --ci and digest --ci attach the run's status", (t) => {
+ghTest("ci: evidence --ci and digest --ci attach the run's status", (t) => {
   const dir = root(t);
   spawnSync("git", ["init", "-q"], { cwd: dir });
   fs.writeFileSync(path.join(dir, "a.txt"), "a\n");

@@ -7,8 +7,8 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { eventsPath } from "../lib/contract.mjs";
 import { readJsonl } from "../lib/fsx.mjs";
+import { BIN, shimRatchet } from "./helpers.mjs";
 
-const BIN = path.join(import.meta.dirname, "..", "bin", "ratchet.mjs");
 const ADAPTER = path.join(import.meta.dirname, "..", "adapters", "pi", "ratchet.ts");
 const PASS = 'node -e "process.exit(0)"';
 const FAIL = 'node -e "console.error(\'boom\'); process.exit(1)"';
@@ -35,10 +35,7 @@ function repo(t) {
   );
 
   // spawnSync takes no argv array for the binary, so RATCHET_BIN points at a shim.
-  const shim = path.join(bin, "ratchet");
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`);
-  fs.chmodSync(shim, 0o755);
-  process.env.RATCHET_BIN = shim;
+  process.env.RATCHET_BIN = shimRatchet(bin);
   return dir;
 }
 

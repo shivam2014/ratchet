@@ -18,6 +18,7 @@ import {
   wrapCommand,
   writeRoots,
 } from "../lib/sandbox.mjs";
+import { windowsOnly } from "./helpers.mjs";
 
 const BIN = path.join(import.meta.dirname, "..", "bin", "ratchet.mjs");
 const DETECTED = detectSandbox();
@@ -93,6 +94,17 @@ test("sandbox: an unsupported platform never guesses", () => {
   assert.equal(result.backend, null);
   assert.match(result.reason, /unsupported platform/);
 });
+
+test(
+  "sandbox: native Windows reports no backend and points at WSL2 or CI",
+  { skip: windowsOnly("no native Windows write fence") },
+  () => {
+    const result = detectSandbox();
+    assert.equal(result.backend, null);
+    assert.match(result.reason, /WSL2/i);
+    assert.match(result.reason, /CI|continuous integration/i);
+  },
+);
 
 // --- profile ----------------------------------------------------------------
 

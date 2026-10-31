@@ -1,10 +1,4 @@
-* text=auto
-*.mjs text eol=lf
-*.js text eol=lf
-*.ts text eol=lf
-*.sh text eol=lf
-*.mmd text eol=lf
-*.svg text eol=lf
-*.json text eol=lf
-*.md text eol=lf
-*.html text eol=lf
+# Check out text with the same bytes on macOS, Linux, and Windows. The diagram
+# manifest hashes sources and SVGs, and tests compare file text directly, so a
+# CRLF working tree would break them. Git still detects binary files.
+* text=auto eol=lf

@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createContract, saveContract } from "../lib/contract.mjs";
+import { canLinkDir, linkDir, outsideDir } from "./helpers.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const BIN = path.join(ROOT, "bin", "ratchet.mjs");
@@ -19,6 +20,16 @@ const rows = [];
 function check(name, ok, detail = "") {
   rows.push({ name, ok });
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  " + detail : ""}`);
+}
+
+/**
+ * A case whose primitive does not exist on this host. It counts as neither a
+ * pass nor a failure, so the POSIX case count is unchanged and Windows does
+ * not pretend to have proved something it could not run.
+ */
+function skip(name, detail = "") {
+  rows.push({ name, ok: true, skipped: true });
+  console.log(`SKIP  ${name}${detail ? "  " + detail : ""}`);
 }
 
 function temp(prefix) {
@@ -169,16 +180,19 @@ run(T, ["enable"]);
 r = before("write", { path: ".env" });
 check("kill switch off restores deny", r.code === 2, `code=${r.code}`);
 
-const outside = fs.mkdtempSync("/var/tmp/ratchet-outside-");
-dirs.push(outside);
-fs.mkdirSync(path.join(T, "src"), { recursive: true });
-fs.symlinkSync(outside, path.join(T, "src", "out"));
-run(T, ["task", "start", "--force", "--role", "coder", "--goal", "symlink", "--scope", "src/**", "--verify", "node check.mjs"]);
-r = before("write", { path: "src/out/leak.txt" });
-const symlinkAllowed = r.code === 0;
-if (symlinkAllowed) fs.writeFileSync(path.join(T, "src/out/leak.txt"), "leak\n");
-const escaped = fs.existsSync(path.join(outside, "leak.txt"));
-check("symlink escape denied", !symlinkAllowed || !escaped, symlinkAllowed ? `ALLOWED, wrote ${outside}/leak.txt` : `code=${r.code}`);
+if (!canLinkDir()) {
+  skip("symlink escape denied", "directory links are not permitted on this host");
+} else {
+  const outside = outsideDir(null, "stress-outside-");
+  fs.mkdirSync(path.join(T, "src"), { recursive: true });
+  linkDir(outside, path.join(T, "src", "out"));
+  run(T, ["task", "start", "--force", "--role", "coder", "--goal", "symlink", "--scope", "src/**", "--verify", "node check.mjs"]);
+  r = before("write", { path: "src/out/leak.txt" });
+  const symlinkAllowed = r.code === 0;
+  if (symlinkAllowed) fs.writeFileSync(path.join(T, "src/out/leak.txt"), "leak\n");
+  const escaped = fs.existsSync(path.join(outside, "leak.txt"));
+  check("symlink escape denied", !symlinkAllowed || !escaped, symlinkAllowed ? `ALLOWED, wrote ${outside}/leak.txt` : `code=${r.code}`);
+}
 
 const a = createContract(T, { goal: "session a", role: "coder", scope: ["src/**"] });
 a.session_id = "session-A";
@@ -222,5 +236,6 @@ const removed = !fs.existsSync(path.join(T3, ".opencode/plugins/ratchet.js"));
 check("t3 plugin installs and uninstalls", installed && removed, `installed=${installed} removed=${removed}`);
 
 const failures = rows.filter((row) => !row.ok);
-console.log(`\nsummary pass=${rows.length - failures.length} fail=${failures.length}`);
+const skips = rows.filter((row) => row.skipped).length;
+console.log(`\nsummary pass=${rows.length - failures.length - skips} fail=${failures.length} skip=${skips}`);
 process.exit(failures.length ? 1 : 0);

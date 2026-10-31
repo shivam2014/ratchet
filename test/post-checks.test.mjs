@@ -116,7 +116,9 @@ test("post checks: a command without {files} runs once per batch", (t) => {
 test("post checks: bash touch is detected through git status", (t) => {
   const root = repo(t);
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
-  assert.equal(spawnSync("touch", ["src/a.ts"], { cwd: root }).status, 0);
+  // Do the write in Node: `touch` does not exist on native Windows, and the
+  // point of the fixture is a file that git status sees, not the command.
+  fs.writeFileSync(path.join(root, "src", "a.ts"), "");
 
   const targets = targetsFor(root, toolAfter(root, "bash", { command: "touch src/a.ts" }));
   assert.deepEqual(targets, ["src/a.ts"]);

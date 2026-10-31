@@ -5,8 +5,20 @@ on:
   pull_request:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  matrix:
+    name: test (${{ matrix.os }})
+    strategy:
+      # One red platform must not hide the state of the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Git Bash is preinstalled on the Windows runner. Running every leg
+        # under bash keeps one command list and matches how the suite is run
+        # locally; the CLI itself still needs to behave under cmd.exe.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,3 +28,15 @@ jobs:
       - run: npm run test:stress
       - run: node bin/ratchet.mjs audit
       - run: node scripts/check-diagrams.mjs
+
+  # The required branch-protection check is named "test", not "test (os)".
+  # This gate keeps that name stable and turns red when any matrix leg fails.
+  test:
+    name: test
+    needs: matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every matrix leg
+        shell: bash
+        run: test "${{ needs.matrix.result }}" = "success"

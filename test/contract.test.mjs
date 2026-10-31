@@ -14,6 +14,7 @@ import {
   normaliseTarget,
   saveContract,
 } from "../lib/contract.mjs";
+import { outsideDir } from "./helpers.mjs";
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-contract-"));
@@ -57,12 +58,13 @@ test("normaliseTarget: absolute inside the repo", (t) => {
 
 test("normaliseTarget: absolute outside the repo stays absolute", (t) => {
   const root = temp(t);
-  assert.equal(normaliseTarget(root, root, "/etc/passwd"), fs.realpathSync("/etc/passwd"));
+  const outside = outsideDir(t, "normalise-");
+  assert.equal(normaliseTarget(root, root, outside), fs.realpathSync(outside));
 });
 
 test("normaliseTarget: expands a leading tilde", (t) => {
   const root = temp(t);
-  const home = fs.realpathSync(process.env.HOME);
+  const home = fs.realpathSync(os.homedir());
   assert.equal(normaliseTarget(root, root, "~/notes.txt"), path.join(home, "notes.txt"));
   assert.equal(normaliseTarget(root, root, "~"), home);
 });

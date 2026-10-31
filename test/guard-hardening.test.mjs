@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createContract, defaultConfig, saveContract } from "../lib/contract.mjs";
 import { decide } from "../lib/decide.mjs";
+import { outsideDir } from "./helpers.mjs";
 
 function emptyRepo(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-hardening-"));
@@ -38,10 +39,9 @@ test("hardening: an absolute target outside the repo is denied under ** scope", 
   assert.match(decision.reason, /outside scope/);
 });
 
-test("hardening: an absolute target in a sibling temp dir is denied", (t) => {
+test("hardening: an absolute target in a sibling directory outside the repo is denied", (t) => {
   const root = repo(t);
-  const outside = fs.mkdtempSync("/var/tmp/ratchet-sibling-");
-  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const outside = outsideDir(t, "sibling-");
   const decision = decide(root, ev("write", { path: path.join(outside, "leak.txt") }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /outside scope/);
@@ -241,8 +241,7 @@ test("hardening: cd .git does not hide a denied path", (t) => {
 
 test("hardening: cd outside the repo does not launder a relative path", (t) => {
   const root = repo(t, { scope: ["src/**"] });
-  const outside = fs.mkdtempSync("/var/tmp/ratchet-cd-");
-  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const outside = outsideDir(t, "cd-");
   const decision = decide(root, ev("bash", { command: `cd ${outside} && rm src/victim.txt` }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /outside scope/);
@@ -256,8 +255,7 @@ test("hardening: cd into the scope still allows a relative write", (t) => {
 
 test("hardening: cd plus a shell wrapper does not launder a relative path", (t) => {
   const root = repo(t, { scope: ["src/**"] });
-  const outside = fs.mkdtempSync("/var/tmp/ratchet-cd-wrap-");
-  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const outside = outsideDir(t, "cd-wrap-");
   const decision = decide(root, ev("bash", { command: `cd ${outside} && bash -c 'rm src/victim.txt'` }));
   assert.equal(decision.allow, false);
   assert.match(decision.reason, /outside scope/);

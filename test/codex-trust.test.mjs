@@ -46,7 +46,7 @@ test("codex trust hash matches Codex 0.163 for pre_tool_use", () => {
 });
 
 test("trust keys use the Codex snake_case event name and real indexes", () => {
-  const file = "/tmp/hooks.json";
+  const file = path.join(os.tmpdir(), "hooks.json");
   assert.equal(hookTrustKey(file, "UserPromptSubmit", 0, 0), `${file}:user_prompt_submit:0:0`);
   assert.equal(hookTrustKey(file, "PreToolUse", 1, 2), `${file}:pre_tool_use:1:2`);
   assert.equal(hookTrustKey(file, "PostToolUse", 0, 1), `${file}:post_tool_use:0:1`);

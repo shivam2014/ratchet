@@ -4,25 +4,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { tempRepo } from "./helpers.mjs";
 
 const BIN = path.join(import.meta.dirname, "..", "bin", "ratchet.mjs");
 
 function session() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-"));
-  spawnSync("git", ["init", "-q"], { cwd: dir });
-  fs.writeFileSync(
-    path.join(dir, "package.json"),
-    JSON.stringify({ name: "demo", scripts: { check: 'node -e "process.exit(0)"' } }, null, 2),
-  );
   // The audit compares the working tree to the contract. A base commit keeps
   // the fixture files (package.json) from looking like task changes.
-  spawnSync("git", ["add", "-A"], { cwd: dir });
-  spawnSync(
-    "git",
-    ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", "commit", "-qm", "base"],
-    { cwd: dir },
-  );
-  return dir;
+  return tempRepo(null, "ratchet-", { name: "demo", scripts: { check: 'node -e "process.exit(0)"' } });
 }
 
 function ratchet(cwd, args, input, env) {
@@ -36,6 +25,14 @@ function ratchet(cwd, args, input, env) {
 
 function event(tool, input, cwd) {
   return JSON.stringify({ harness: "test", tool, input, cwd });
+}
+
+/**
+ * Isolate a user-level install. HOME covers POSIX; USERPROFILE covers Windows,
+ * where os.homedir() ignores HOME.
+ */
+function homeEnv(home) {
+  return { HOME: home, USERPROFILE: home };
 }
 
 test("e2e: contract allows in-scope, blocks out-of-scope, records evidence", () => {
@@ -245,7 +242,7 @@ test("install: claude hook is idempotent and preserves settings", () => {
 test("install: codex hook is merged, idempotent, and removable", () => {
   const dir = session();
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-codex-home-"));
-  const env = { HOME: home, CODEX_HOME: path.join(home, ".codex") };
+  const env = { ...homeEnv(home), CODEX_HOME: path.join(home, ".codex") };
   ratchet(dir, ["init"], undefined, env);
   const hooksFile = path.join(dir, ".codex/hooks.json");
   fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
@@ -269,7 +266,7 @@ test("install: codex hook is merged, idempotent, and removable", () => {
 test("doctor: isolated codex and claude harnesses pass, bad trust fails", () => {
   const dir = session();
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-doctor-home-"));
-  const env = { HOME: home, CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: path.join(home, ".claude") };
+  const env = { ...homeEnv(home), CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: path.join(home, ".claude") };
   ratchet(dir, ["init"], undefined, env);
   assert.equal(ratchet(dir, ["install", "--harness", "codex,claude", "--user", "--yes"], undefined, env).status, 0);
 
@@ -428,7 +425,7 @@ test("e2e: status detects a user-level adapter with no manifest", () => {
   fs.mkdirSync(path.join(home, ".config", "opencode", "plugins"), { recursive: true });
   fs.writeFileSync(path.join(home, ".config", "opencode", "plugins", "ratchet.js"), "// adapter\n");
 
-  const status = ratchet(dir, ["status"], undefined, { HOME: home });
+  const status = ratchet(dir, ["status"], undefined, homeEnv(home));
   assert.equal(status.status, 0, status.stderr);
   assert.match(status.stdout, /opencode\s+user\s+.*ratchet\.js\s+\(detected\)/);
   fs.rmSync(home, { recursive: true, force: true });

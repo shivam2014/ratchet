@@ -97,6 +97,17 @@ ln -s "$PWD/bin/ratchet.mjs" ~/.local/bin/ratchet
 
 `ratchet init` detects `package.json` scripts (`check`, `lint`, `typecheck`, `test`, `build`) and writes `.ratchet/config.json`.
 
+## Platforms
+
+The CLI runs on macOS, Linux, and Windows with Node >= 20. `npm link` puts `ratchet` on PATH on every platform; without it, run `node bin/ratchet.mjs` directly, or add a wrapper for your shell.
+
+- **Sandbox**: the optional kernel write fence uses Seatbelt (`sandbox-exec`) on macOS and bubblewrap (`bwrap`) on Linux. Native Windows has no equivalent kernel fence: `detectSandbox` reports no backend, and `sandbox.required: true` fails closed instead of running unfenced. Run inside WSL2 to use the Linux fence, or rely on the git scope audit (`ratchet done`) plus CI.
+- **Git hooks**: the pre-commit hook is unchanged. Git for Windows ships `sh`, so the hook runs there as it does on macOS and Linux.
+- **Shells**: the guard parses bash/POSIX command lines. On native Windows, commands issued by PowerShell or `cmd.exe` get less reliable path inference than Git Bash; an unresolved command is still allowed and marked unchecked, so the git audit remains the backstop for writes the classifier missed.
+- **Paths**: scope globs are repo-relative and written with `/` on every platform; absolute paths in tool events may be native (`C:\...` or `/...`) and are resolved before scope checks. Deny matching is case-insensitive everywhere, so `.ENV` cannot slip past `.env` on NTFS or APFS.
+
+CI runs the suite, the CLI stress matrix, the rule audit, and the diagram check on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Node 22. That matrix is the cross-platform proof. Cases that need a primitive the host does not have are skipped with a reason, not weakened.
+
 ## Quick start
 
 ```bash
@@ -213,7 +224,7 @@ A hook is policy. For a kernel boundary around bash writes, add this to `.ratche
 
 Under a live contract, a bash call then gets a profile that allows reads everywhere and writes only under the static roots of the contract's `scope`, the repo's git directory, temp directories, and common caches. A read-only contract keeps its scope closed, and guard state under `.ratchet` (active pointer, config, kill switch, run contracts and evidence) stays denied even when `scope` is `**`. A write anywhere else fails with `EPERM` inside the kernel, even when the shell classifier missed it. `required: true` refuses bash when the fence cannot be applied.
 
-The backend is `sandbox-exec` (seatbelt) on macOS and `bubblewrap` when `bwrap` is installed on Linux. `ratchet doctor` reports the backend, and `ratchet status` prints it. Run one command under the live profile by hand:
+The backend is `sandbox-exec` (seatbelt) on macOS and `bubblewrap` when `bwrap` is installed on Linux. Native Windows has no kernel fence, so detection reports no backend and `required: true` fails closed; use WSL2 or the git audit there. `ratchet doctor` reports the backend, and `ratchet status` prints it. Run one command under the live profile by hand:
 
 ```bash
 ratchet sandbox -- npm test

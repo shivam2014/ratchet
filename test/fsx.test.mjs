@@ -11,6 +11,7 @@ import {
   repoRel,
   slug,
   timestampId,
+  toPosix,
   writeJson,
 } from "../lib/fsx.mjs";
 
@@ -37,7 +38,8 @@ test("fsx: findRoot falls back to .git", (t) => {
 test("fsx: repoRel is relative inside and absolute outside", (t) => {
   const root = temp(t);
   assert.equal(repoRel(root, path.join(root, "src/a.ts")), "src/a.ts");
-  assert.equal(repoRel(root, "/etc/passwd"), "/etc/passwd");
+  const outside = path.join(os.homedir(), "notes.txt");
+  assert.equal(repoRel(root, outside), toPosix(outside));
 });
 
 test("fsx: json round trip and jsonl append", (t) => {
