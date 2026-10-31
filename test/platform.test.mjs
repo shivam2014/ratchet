@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   isWindows,
+  opencodeConfigDir,
   pathIsInside,
   pathKey,
   runShell,
@@ -250,4 +251,18 @@ test("checks: runChecks still exports RATCHET=1 to the checked command", (t) => 
   );
   assert.equal(report.ok, true, report.results[0]?.stderr);
   assert.equal(report.results[0].stdout, "1");
+});
+
+test("platform: OpenCode config dir follows the platform", () => {
+  assert.equal(
+    opencodeConfigDir("C:\\Users\\shiva", {
+      platform: "win32",
+      env: { APPDATA: "C:\\Users\\shiva\\AppData\\Roaming" },
+    }),
+    "C:\\Users\\shiva\\AppData\\Roaming\\opencode",
+  );
+  assert.equal(
+    opencodeConfigDir("/home/shiva", { platform: "linux", env: {} }),
+    "/home/shiva/.config/opencode",
+  );
 });

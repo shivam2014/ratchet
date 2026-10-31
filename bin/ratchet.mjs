@@ -72,6 +72,7 @@ import {
   saveManifest,
   which,
 } from "../lib/harnesses.mjs";
+import { opencodeConfigDir } from "../lib/platform.mjs";
 import readline from "node:readline/promises";
 import os from "node:os";
 import { codexHome, findRatchetHooks, hookTrustHash, readTrustHash } from "../lib/codex-trust.mjs";
@@ -1710,6 +1711,7 @@ function detectAdapters(root) {
   };
 
   add("opencode", path.join(home, ".config", "opencode", "plugins", "ratchet.js"), "user");
+  add("opencode", path.join(opencodeConfigDir(home), "plugins", "ratchet.js"), "user");
   add("opencode", path.join(root, ".opencode", "plugins", "ratchet.js"), "project");
   for (const [name, file] of [
     ["claude", path.join(home, ".claude", "settings.json")],
