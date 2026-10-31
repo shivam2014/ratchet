@@ -69,6 +69,12 @@ function liveContract(root, opts = {}) {
 const fakeSeatbelt = () => ({ backend: "seatbelt", bin: "/usr/bin/sandbox-exec", reason: "test backend" });
 const noBackend = () => ({ backend: null, bin: null, reason: "no backend for this test" });
 
+/**
+ * How an SBPL string literal spells a path. Backslashes are doubled, so a
+ * Windows path in a profile is not the plain path. On POSIX this is identity.
+ */
+const sbpl = (value) => String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
 // --- detection --------------------------------------------------------------
 
 test("sandbox: macOS without sandbox-exec reports no backend and why", () => {
@@ -133,10 +139,10 @@ test("sandbox: the profile allows reads, denies writes, and reopens only the fen
   assert.match(profile, /^\(version 1\)/);
   assert.match(profile, /^\(allow default\)$/m);
   assert.match(profile, /^\(deny file-write\*\)$/m);
-  assert.ok(profile.includes(`(subpath "${path.join(root, "src")}")`), profile);
-  assert.ok(profile.includes(`(subpath "${path.join(root, "docs")}")`), profile);
-  assert.ok(profile.includes(`(subpath "${path.join(root, ".git")}")`), profile);
-  assert.ok(profile.includes(`(subpath "${path.join(root, "home", ".npm")}")`), profile);
+  assert.ok(profile.includes(`(subpath "${sbpl(path.join(root, "src"))}")`), profile);
+  assert.ok(profile.includes(`(subpath "${sbpl(path.join(root, "docs"))}")`), profile);
+  assert.ok(profile.includes(`(subpath "${sbpl(path.join(root, ".git"))}")`), profile);
+  assert.ok(profile.includes(`(subpath "${sbpl(path.join(root, "home", ".npm"))}")`), profile);
   assert.ok(profile.includes(`(literal "/dev/null")`), profile);
 });
 
@@ -170,11 +176,11 @@ test("sandbox: guard state stays denied even under **", (t) => {
   const root = tempDir(t);
   const profile = buildProfile(root, { scope: ["**"] }, { home: "", tempRoots: [], cacheRoots: [] });
   assert.ok(
-    profile.includes(`(deny file-write* (literal "${path.join(root, ".ratchet", "current")}")`),
+    profile.includes(`(deny file-write* (literal "${sbpl(path.join(root, ".ratchet", "current"))}")`),
     profile,
   );
   assert.ok(
-    profile.includes(`(deny file-write* (subpath "${path.join(root, ".ratchet", "runs")}")`),
+    profile.includes(`(deny file-write* (subpath "${sbpl(path.join(root, ".ratchet", "runs"))}")`),
     profile,
   );
 });
@@ -288,7 +294,7 @@ test("decide: an OpenCode bash call gets an enforced seatbelt command", (t) => {
   assert.equal(decision.sandbox.backend, "seatbelt");
   assert.match(decision.sandbox.command, /^\/usr\/bin\/sandbox-exec -p /);
   assert.match(decision.sandbox.profile, /\(deny file-write\*\)/);
-  assert.ok(decision.sandbox.profile.includes(path.join(root, "src")));
+  assert.ok(decision.sandbox.profile.includes(sbpl(path.join(root, "src"))));
 });
 
 test("decide: a read-only bash call is fenced too", (t) => {
