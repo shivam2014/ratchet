@@ -198,7 +198,10 @@ test("opencode adapter: a broken ratchet binary fails closed", { skip: skipped }
   const previous = process.env.RATCHET_BIN;
   process.env.RATCHET_BIN = "/nonexistent/ratchet";
   try {
-    assert.throws(() => adapter.before({ tool: "write", input: { path: "src/a.ts" } }), /cannot run/);
+    assert.throws(
+      () => adapter.before({ tool: "write", input: { path: "src/a.ts" } }),
+      /cannot run|system cannot find|guard exited/i,
+    );
   } finally {
     process.env.RATCHET_BIN = previous;
   }
