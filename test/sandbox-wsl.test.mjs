@@ -79,3 +79,8 @@ test("sandbox: a POSIX backend on Windows is refused", (t) => {
     /unavailable on Windows/,
   );
 });
+
+test("sandbox: Git Bash drive paths map to /mnt/<drive> on Windows", () => {
+  assert.equal(toWslPath("/c/repo/src", { platform: "win32" }), "/mnt/c/repo/src");
+  assert.equal(toWslPath("/c/repo/src", { platform: "linux" }), "/c/repo/src");
+});
