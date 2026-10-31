@@ -36,8 +36,11 @@ test("checks: failing command", (t) => {
   assert.equal(report.results[0].status, 3);
 });
 
-test("checks: timeout is a failure", (t) => {
-  const root = temp(t);
+test("checks: timeout is a failure", () => {
+  // The killed shell can leave its child holding the directory on Windows.
+  // This test is about the timeout verdict, not cleanup; the OS temp reaper
+  // owns the directory.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-checks-timeout-"));
   const report = runChecks(
     root,
     [{ id: "slow", cmd: script(root, "slow.mjs", "setTimeout(() => {}, 1000);\n") }],
