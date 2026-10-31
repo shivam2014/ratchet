@@ -34,14 +34,6 @@ function resolveBin() {
   return "ratchet";
 }
 
-function hookInvocation(bin: string, verb: string) {
-  if (process.platform !== "win32") return { file: bin, args: [verb] };
-  return {
-    file: process.env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", `"${bin}" ${verb}`],
-  };
-}
-
 /** Nearest ancestor `.ratchet` state file. Prompt events need config.json; the rest need current. */
 function hasState(cwd: string, file: string) {
   let dir = path.resolve(cwd);
@@ -81,11 +73,13 @@ function lastAssistantText(messages: any[]) {
 
 function runHook(event: Record<string, unknown>, cwd: string) {
   const bin = resolveBin();
-  const invocation = hookInvocation(bin, "hook");
-  const result = spawnSync(invocation.file, invocation.args, {
+  const result = spawnSync(bin, ["hook"], {
     input: JSON.stringify(event),
     encoding: "utf8",
     cwd,
+    // A .cmd shim cannot be spawned directly on Windows. Node builds the
+    // cmd.exe /d /s /c line and quotes the path correctly.
+    shell: process.platform === "win32",
   });
   if (result.error) return { error: `cannot run "${bin}": ${result.error.message}`, decision: null, status: null, stderr: "" };
   let decision: any = null;

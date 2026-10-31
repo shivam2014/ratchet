@@ -31,14 +31,6 @@ function resolveBin() {
   return "ratchet";
 }
 
-function hookInvocation(bin, verb) {
-  if (process.platform !== "win32") return { file: bin, args: [verb] };
-  return {
-    file: process.env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", `"${bin}" ${verb}`],
-  };
-}
-
 function findContractRoot(start) {
   let dir = path.resolve(start || process.cwd());
   for (;;) {
@@ -64,11 +56,13 @@ export const RatchetV1 = async ({ directory }) => ({
       cwd: directory,
     };
     const bin = resolveBin();
-    const invocation = hookInvocation(bin, "guard");
-    const result = spawnSync(invocation.file, invocation.args, {
+    const result = spawnSync(bin, ["guard"], {
       input: JSON.stringify(payload),
       encoding: "utf8",
       cwd: directory,
+      // A .cmd shim cannot be spawned directly on Windows. Node builds the
+      // cmd.exe /d /s /c line and quotes the path correctly.
+      shell: process.platform === "win32",
     });
     if (result.error) {
       throw new Error(`[ratchet] cannot run "${bin}": ${result.error.message}`);
