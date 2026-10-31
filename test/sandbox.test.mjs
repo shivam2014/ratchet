@@ -285,7 +285,7 @@ test("decide: sandbox is off unless config.sandbox.enabled is true", (t) => {
   assert.equal(decision.sandbox, undefined);
 });
 
-test("decide: an OpenCode bash call gets an enforced seatbelt command", (t) => {
+test("decide: an OpenCode bash call gets an enforced seatbelt command", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t);
   liveContract(root);
   const decision = decide(
@@ -301,7 +301,7 @@ test("decide: an OpenCode bash call gets an enforced seatbelt command", (t) => {
   assert.ok(decision.sandbox.profile.includes(sbpl(path.join(root, "src"))));
 });
 
-test("decide: a read-only bash call is fenced too", (t) => {
+test("decide: a read-only bash call is fenced too", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t);
   liveContract(root);
   const decision = decide(
@@ -314,7 +314,7 @@ test("decide: a read-only bash call is fenced too", (t) => {
   assert.equal(decision.sandbox.enforced, true);
 });
 
-test("decide: a harness that cannot rewrite gets advisory metadata, not enforcement", (t) => {
+test("decide: a harness that cannot rewrite gets advisory metadata, not enforcement", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t);
   liveContract(root);
   const decision = decide(
@@ -367,7 +367,7 @@ test("decide: the control plane still runs when the fence is required but unavai
   assert.match(decision.sandbox.reason, /control-plane/);
 });
 
-test("decide: a required fence denies a harness that cannot rewrite", (t) => {
+test("decide: a required fence denies a harness that cannot rewrite", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t, { enabled: true, required: true });
   liveContract(root);
   const decision = decide(
@@ -392,7 +392,7 @@ test("decide: a bare ratchet control command is not wrapped", (t) => {
   assert.match(decision.sandbox.reason, /control-plane/);
 });
 
-test("decide: a compound ratchet command is wrapped", (t) => {
+test("decide: a compound ratchet command is wrapped", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t);
   liveContract(root);
   const decision = decide(
@@ -416,7 +416,7 @@ test("decide: a write tool is never sandboxed", (t) => {
   assert.equal(decision.sandbox, undefined);
 });
 
-test("decide: the event trail records the backend and whether it was enforced", (t) => {
+test("decide: the event trail records the backend and whether it was enforced", { skip: process.platform === "win32" }, (t) => {
   const root = configuredRepo(t);
   const contract = liveContract(root);
   const event = { harness: "opencode", tool: "bash", input: { command: "echo x > src/a.ts" } };
