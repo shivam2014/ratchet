@@ -27,14 +27,17 @@ test("checks: failing command", (t) => {
 
 test("checks: timeout is a failure", (t) => {
   const root = temp(t);
-  const report = runChecks(root, [{ id: "slow", cmd: "sleep 2" }], { timeoutMs: 100 });
+  // Node exists on every platform; sleep does not. The runner must kill the
+  // command at the timeout instead of waiting it out.
+  const report = runChecks(root, [{ id: "slow", cmd: 'node -e "setTimeout(() => {}, 5000)"' }], { timeoutMs: 100 });
   assert.equal(report.ok, false);
   assert.notEqual(report.results[0].status, 0);
 });
 
 test("checks: failure context keeps the failing test block", (t) => {
   const root = temp(t);
-  const cmd = `node -e 'console.log("not ok 1 - example"); console.log("  error: boom"); process.exit(1)'`;
+  // Double quotes group the script under both sh and cmd.exe.
+  const cmd = `node -e "console.log('not ok 1 - example'); console.log('  error: boom'); process.exit(1)"`;
   const report = runChecks(root, [{ id: "fail", cmd }], { timeoutMs: 10000 });
   assert.equal(report.ok, false);
   assert.match(report.results[0].failure, /not ok 1 - example/);
