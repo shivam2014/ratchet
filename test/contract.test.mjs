@@ -14,6 +14,7 @@ import {
   normaliseTarget,
   saveContract,
 } from "../lib/contract.mjs";
+import { toPosix } from "../lib/fsx.mjs";
 import { outsideDir } from "./helpers.mjs";
 
 function temp(t) {
@@ -59,14 +60,14 @@ test("normaliseTarget: absolute inside the repo", (t) => {
 test("normaliseTarget: absolute outside the repo stays absolute", (t) => {
   const root = temp(t);
   const outside = outsideDir(t, "normalise-");
-  assert.equal(normaliseTarget(root, root, outside), fs.realpathSync(outside));
+  assert.equal(normaliseTarget(root, root, outside), toPosix(fs.realpathSync(outside)));
 });
 
 test("normaliseTarget: expands a leading tilde", (t) => {
   const root = temp(t);
   const home = fs.realpathSync(os.homedir());
-  assert.equal(normaliseTarget(root, root, "~/notes.txt"), path.join(home, "notes.txt"));
-  assert.equal(normaliseTarget(root, root, "~"), home);
+  assert.equal(normaliseTarget(root, root, "~/notes.txt"), toPosix(path.join(home, "notes.txt")));
+  assert.equal(normaliseTarget(root, root, "~"), toPosix(home));
 });
 
 test("createContract: defaults and verify ids", (t) => {
