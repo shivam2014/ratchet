@@ -101,10 +101,16 @@ ln -s "$PWD/bin/ratchet.mjs" ~/.local/bin/ratchet
 
 The CLI runs on macOS, Linux, and Windows with Node >= 20. `npm link` puts `ratchet` on PATH on every platform; without it, run `node bin/ratchet.mjs` directly, or add a wrapper for your shell.
 
-- **Sandbox**: the optional kernel write fence uses Seatbelt (`sandbox-exec`) on macOS and bubblewrap (`bwrap`) on Linux. Native Windows has no equivalent kernel fence: `detectSandbox` reports no backend, and `sandbox.required: true` fails closed instead of running unfenced. Run inside WSL2 to use the Linux fence, or rely on the git scope audit (`ratchet done`) plus CI.
-- **Git hooks**: the pre-commit hook is unchanged. Git for Windows ships `sh`, so the hook runs there as it does on macOS and Linux.
-- **Shells**: the guard parses bash/POSIX command lines. On native Windows, commands issued by PowerShell or `cmd.exe` get less reliable path inference than Git Bash; an unresolved command is still allowed and marked unchecked, so the git audit remains the backstop for writes the classifier missed.
-- **Paths**: scope globs are repo-relative and written with `/` on every platform; absolute paths in tool events may be native (`C:\...` or `/...`) and are resolved before scope checks. Deny matching is case-insensitive everywhere, so `.ENV` cannot slip past `.env` on NTFS or APFS.
+| Platform | Shell runner | Kernel write fence |
+|---|---|---|
+| macOS | `/bin/sh -c` | Seatbelt (`sandbox-exec`) |
+| Linux | `/bin/sh -c` | bubblewrap (`bwrap`) when installed |
+| Windows | `cmd.exe /d /s /c` | WSL2 + `bwrap`; no native fence, so `sandbox.required` fails closed |
+
+- **Sandbox**: Seatbelt on macOS, `bwrap` on Linux. On Windows, `detectSandbox` looks for `wsl.exe` and `bwrap` inside the default WSL2 distro; when both exist the command runs through `wsl.exe --exec bwrap`, with the payload base64-wrapped so `cmd.exe` and Git Bash cannot mangle it. Native Windows without WSL has no kernel fence: `sandbox.required` refuses instead of running unfenced. `ratchet doctor` reports the backend.
+- **Git hooks**: the pre-commit hook is unchanged. Git for Windows ships `sh`, so the hook runs there as it does on macOS and Linux. Use `RATCHET_SESSION` when more than one session contract is live.
+- **Shells**: the guard parses bash/POSIX command lines and, on Windows, `cmd.exe` and PowerShell write verbs (`del`, `copy`, `move`, `rmdir`, `Remove-Item`, `Set-Content`, `Out-File`, `cmd /c`, `powershell -Command`). This is a lexical classifier, not a PowerShell AST; an opaque payload is denied and an unresolved command is marked unchecked, so the git audit remains the backstop.
+- **Paths**: scope globs are repo-relative and written with `/` on every platform; absolute paths in tool events may be native (`C:\...` or `/...`) and are resolved before scope checks. Scope and deny matching are case-insensitive on Windows, so `SRC` and `src` name the same tree and `.ENV` cannot slip past `.env` on NTFS.
 
 CI runs the suite, the CLI stress matrix, the rule audit, and the diagram check on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Node 22. That matrix is the cross-platform proof. Cases that need a primitive the host does not have are skipped with a reason, not weakened.
 
@@ -288,7 +294,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **405 deterministic unit and CLI tests**, no network, all passing. `npm test`
+- **470 deterministic unit and CLI tests**, no network. On non-Windows hosts 469 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`
