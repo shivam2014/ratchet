@@ -8,7 +8,7 @@
  */
 import { installTrust } from "../../lib/codex-trust.mjs";
 
-const result = installTrust(process.env.CODEX_HOME ?? `${process.env.HOME}/.codex`);
+const result = installTrust(process.env.CODEX_HOME ?? `${process.env.HOME || process.env.USERPROFILE}/.codex`);
 if (!result.ok) {
   console.error(result.reason);
   process.exit(1);

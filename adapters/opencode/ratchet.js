@@ -92,7 +92,7 @@ function targetsOf(tool, args, base) {
     for (const token of command.split(/[\s;&|()<>]+/)) {
       const cleaned = token.replace(/^["']|["']$/g, "");
       if (cleaned.startsWith("/")) out.push(cleaned);
-      else if (cleaned.startsWith("~/")) out.push(path.join(process.env.HOME || "", cleaned.slice(2)));
+      else if (cleaned.startsWith("~/")) out.push(path.join(process.env.HOME || process.env.USERPROFILE || "", cleaned.slice(2)));
     }
   }
   return out;
