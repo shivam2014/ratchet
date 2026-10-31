@@ -29,3 +29,8 @@ test("glob: brackets are literal", () => {
   assert.equal(globToRegExp("src/[ab].ts").test("src/[ab].ts"), true);
   assert.equal(globToRegExp("src/[ab].ts").test("src/a.ts"), false);
 });
+
+test("glob: Windows scope matching is case-insensitive", () => {
+  assert.equal(matchesAny("SRC/A.TS", ["src/**"], { platform: "win32" }), true);
+  assert.equal(matchesAny("SRC/A.TS", ["src/**"], { platform: "linux" }), false);
+});
