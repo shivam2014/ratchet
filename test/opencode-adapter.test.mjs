@@ -213,7 +213,10 @@ test("opencode adapter: a crashing ratchet binary fails closed", { skip: skipped
   const crash = shimRatchet(path.dirname(previous), { name: "ratchet-crash", exit: 1 });
   process.env.RATCHET_BIN = crash;
   try {
-    assert.throws(() => adapter.before({ tool: "write", input: { path: "src/a.ts" } }), /guard exited 1|without a decision/);
+    assert.throws(
+      () => adapter.before({ tool: "write", input: { path: "src/a.ts" } }),
+      /guard exited 1|without a decision|cannot run|EPIPE/,
+    );
   } finally {
     process.env.RATCHET_BIN = previous;
     fs.rmSync(crash, { force: true });

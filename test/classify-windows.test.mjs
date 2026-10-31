@@ -406,7 +406,7 @@ test("windows: classifyWindows exposes the raw result", () => {
   assert.equal(r.detected, true);
   assert.deepEqual(r.paths, ["C:\\outside\\b.txt"]);
 
-  const read = classifyWindows("cat src/a.ts");
+  const read = classifyWindows("cat src/a.ts", { platform: "darwin" });
   assert.equal(read.write, false);
   assert.equal(read.detected, false);
 });
