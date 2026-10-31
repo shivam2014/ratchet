@@ -204,7 +204,7 @@ test("platform: runShell returns the raw spawn error when the shell is missing",
 // --- sandbox integration --------------------------------------------------
 
 test("sandbox: Windows reports no backend with the WSL2 guidance", () => {
-  const detected = detectSandbox({ platform: "win32" });
+  const detected = detectSandbox({ platform: "win32", which: () => null });
   assert.equal(detected.backend, null);
   assert.equal(detected.reason, WINDOWS_NO_FENCE);
   assert.match(detected.reason, /WSL2/);
