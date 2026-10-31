@@ -22,9 +22,21 @@ function kind(tool) {
 
 function resolveBin() {
   if (process.env.RATCHET_BIN) return process.env.RATCHET_BIN;
-  const local = path.join(process.env.HOME || "", ".local", "bin", "ratchet");
-  if (fs.existsSync(local)) return local;
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const names = process.platform === "win32" ? ["ratchet.cmd", "ratchet.exe", "ratchet"] : ["ratchet"];
+  for (const name of names) {
+    const local = path.join(home, ".local", "bin", name);
+    if (fs.existsSync(local)) return local;
+  }
   return "ratchet";
+}
+
+function hookInvocation(bin, verb) {
+  if (process.platform !== "win32") return { file: bin, args: [verb] };
+  return {
+    file: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${bin}" ${verb}`],
+  };
 }
 
 function findContractRoot(start) {
@@ -52,7 +64,8 @@ export const RatchetV1 = async ({ directory }) => ({
       cwd: directory,
     };
     const bin = resolveBin();
-    const result = spawnSync(bin, ["guard"], {
+    const invocation = hookInvocation(bin, "guard");
+    const result = spawnSync(invocation.file, invocation.args, {
       input: JSON.stringify(payload),
       encoding: "utf8",
       cwd: directory,

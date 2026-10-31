@@ -25,9 +25,21 @@ function kind(tool: string) {
 
 function resolveBin() {
   if (process.env.RATCHET_BIN) return process.env.RATCHET_BIN;
-  const local = path.join(process.env.HOME || "", ".local", "bin", "ratchet");
-  if (fs.existsSync(local)) return local;
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const names = process.platform === "win32" ? ["ratchet.cmd", "ratchet.exe", "ratchet"] : ["ratchet"];
+  for (const name of names) {
+    const local = path.join(home, ".local", "bin", name);
+    if (fs.existsSync(local)) return local;
+  }
   return "ratchet";
+}
+
+function hookInvocation(bin: string, verb: string) {
+  if (process.platform !== "win32") return { file: bin, args: [verb] };
+  return {
+    file: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${bin}" ${verb}`],
+  };
 }
 
 /** Nearest ancestor `.ratchet` state file. Prompt events need config.json; the rest need current. */
@@ -69,7 +81,8 @@ function lastAssistantText(messages: any[]) {
 
 function runHook(event: Record<string, unknown>, cwd: string) {
   const bin = resolveBin();
-  const result = spawnSync(bin, ["hook"], {
+  const invocation = hookInvocation(bin, "hook");
+  const result = spawnSync(invocation.file, invocation.args, {
     input: JSON.stringify(event),
     encoding: "utf8",
     cwd,
