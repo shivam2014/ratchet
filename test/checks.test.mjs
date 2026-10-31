@@ -7,7 +7,9 @@ import { runChecks } from "../lib/checks.mjs";
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-checks-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  // A killed shell can leave a child holding the directory for a moment on
+  // Windows; retry long enough for the tree kill to land.
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }));
   return root;
 }
 
