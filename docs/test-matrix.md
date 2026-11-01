@@ -31,7 +31,7 @@ Every Ratchet feature, how it is tested, and the result. `npm test` is determini
 | WSL sandbox | `test/sandbox-wsl.test.mjs` | detection, drive/Git-Bash path translation, bwrap argv, base64 payload |
 | pi adapter lifecycle | `test/pi-adapter.test.mjs` | prompt auto contract and brief, tool deny, post-check context, stop block and allow, no-op outside a repo |
 
-Total: 474 tests; on non-Windows hosts 473 pass and one Windows-only sandbox check is skipped.
+Total: 477 tests; on non-Windows hosts 476 pass and one Windows-only sandbox check is skipped.
 
 ```bash
 npm test

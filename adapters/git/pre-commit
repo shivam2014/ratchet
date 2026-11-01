@@ -1,3 +1,6 @@
 #!/bin/sh
 # Local feedback. CI is the authority; --no-verify is still possible.
+if [ -n "${RATCHET_SESSION:-}" ]; then
+  exec ratchet hook pre-commit --session "$RATCHET_SESSION"
+fi
 exec ratchet hook pre-commit

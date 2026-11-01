@@ -270,3 +270,30 @@ test("opencode adapter: a write outside the repo is not guarded while idle", { s
 
   assert.equal(adapter.before({ tool: "write", input: { path: outside, content: "x" } }), undefined);
 });
+
+test("opencode adapter: cd to another repo outranks the session workdir", { skip: skipped }, async (t) => {
+  const dir = repo(t);
+  assert.equal(ratchet(dir, ["init"]).status, 0);
+  start(dir);
+  const other = repo(t);
+  assert.equal(ratchet(other, ["init"]).status, 0);
+  assert.equal(
+    ratchet(other, [
+      "task", "start",
+      "--role", "coder",
+      "--goal", "other repo",
+      "--scope", "lib/**",
+      "--verify", "node --version",
+    ]).status,
+    0,
+  );
+  const adapter = await harness(dir);
+
+  assert.equal(
+    adapter.before({
+      tool: "bash",
+      input: { workdir: dir, command: `cd ${other} && touch lib/x.ts` },
+    }),
+    undefined,
+  );
+});

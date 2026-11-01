@@ -82,17 +82,29 @@ function targetsOf(tool, args, base) {
     }
   }
   if (tool === "bash") {
-    const cwd = args.workdir || args.cwd || args.directory;
-    if (typeof cwd === "string" && cwd) out.push(path.resolve(base, cwd));
     const command = String(args.command ?? "");
-    const cd = command.match(/(?:^|[\s;&|])cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/);
-    if (cd) out.push(path.resolve(base, cd[1].replace(/^["']|["']$/g, "")));
+    const workdir = args.workdir || args.cwd || args.directory;
+    const shellStart = typeof workdir === "string" && workdir ? path.resolve(base, workdir) : base;
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+
+    // `cd` is the command's real cwd. It must outrank a broader session
+    // workdir, otherwise a home contract wins over `cd ~/repo && git commit`.
+    const re = /(?:^|[\s;&|])cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g;
+    let match;
+    while ((match = re.exec(command)) !== null) {
+      let target = match[1].replace(/^["']|["']$/g, "");
+      if (target === "~") target = home;
+      else if (target.startsWith("~/")) target = path.join(home, target.slice(2));
+      out.push(path.resolve(shellStart, target));
+    }
+
+    if (typeof workdir === "string" && workdir) out.push(path.resolve(base, workdir));
     // Commands often carry absolute paths (`node /repo/script.mjs`,
     // `> /repo/out.txt`) without a workdir. Treat each as a candidate root.
     for (const token of command.split(/[\s;&|()<>]+/)) {
       const cleaned = token.replace(/^["']|["']$/g, "");
       if (cleaned.startsWith("/")) out.push(cleaned);
-      else if (cleaned.startsWith("~/")) out.push(path.join(process.env.HOME || process.env.USERPROFILE || "", cleaned.slice(2)));
+      else if (cleaned.startsWith("~/")) out.push(path.join(home, cleaned.slice(2)));
     }
   }
   return out;
@@ -104,19 +116,29 @@ function targetsOf(tool, args, base) {
  * case a global install stays silent.
  */
 function rootFor(tool, args, base) {
-  for (const target of targetsOf(tool, args, base)) {
-    const root = findRepoRoot(target);
-    if (root) return root;
-  }
-  // A write/edit outside every ratchet repo is only in scope when the session
-  // repo has a live contract. Then the guard sees the absolute path and
-  // refuses it consistently with Bash. With no live contract, stay out.
-  if (tool === "write") {
-    const baseRoot = findRepoRoot(base);
-    if (baseRoot && fs.existsSync(path.join(baseRoot, ".ratchet", "current"))) return baseRoot;
-    return null;
-  }
-  return findRepoRoot(base);
+  const roots = targetsOf(tool, args, base)
+    .map((target) => findRepoRoot(target))
+    .filter(Boolean);
+  const live = (root) => Boolean(root) && fs.existsSync(path.join(root, ".ratchet", "current"));
+  const gitRepo = (root) => Boolean(root) && fs.existsSync(path.join(root, ".git"));
+
+  // Bash: the first target is the command's real cwd (`cd` before workdir),
+  // so its repo wins even if a broader user-scope root is live.
+  if (tool !== "write") return roots[0] ?? findRepoRoot(base);
+
+  // Writes: a live target root is the contract; otherwise an idle git repo is
+  // still guarded so the refusal is "start a contract", not a silent write.
+  const liveRoot = roots.find(live);
+  if (liveRoot) return liveRoot;
+  const repoRoot = roots.find(gitRepo);
+  if (repoRoot) return repoRoot;
+
+  // A write/edit outside every repo is only guarded when the session repo has
+  // a live contract. Then the guard sees the absolute path and refuses it
+  // consistently with Bash. With no live contract, stay out.
+  const baseRoot = findRepoRoot(base);
+  if (live(baseRoot)) return baseRoot;
+  return null;
 }
 
 function runHook(payload, cwd) {

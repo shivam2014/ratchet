@@ -108,7 +108,7 @@ The CLI runs on macOS, Linux, and Windows with Node >= 20. `npm link` puts `ratc
 | Windows | `cmd.exe /d /s /c` | WSL2 + `bwrap`; no native fence, so `sandbox.required` fails closed |
 
 - **Sandbox**: Seatbelt on macOS, `bwrap` on Linux. On Windows, `detectSandbox` looks for `wsl.exe` and `bwrap` inside the default WSL2 distro; when both exist the command runs through `wsl.exe --exec bwrap`, with the payload base64-wrapped so `cmd.exe` and Git Bash cannot mangle it. Native Windows without WSL has no kernel fence: `sandbox.required` refuses instead of running unfenced. `ratchet doctor` reports the backend.
-- **Git hooks**: the pre-commit hook is unchanged. Git for Windows ships `sh`, so the hook runs there as it does on macOS and Linux. Use `RATCHET_SESSION` when more than one session contract is live.
+- **Git hooks**: the pre-commit hook is `ratchet hook pre-commit`; when `RATCHET_SESSION` is set it passes that thread as `--session`. Git for Windows ships `sh`, so the hook runs there as it does on macOS and Linux.
 - **Shells**: the guard parses bash/POSIX command lines and, on Windows, `cmd.exe` and PowerShell write verbs (`del`, `copy`, `move`, `rmdir`, `Remove-Item`, `Set-Content`, `Out-File`, `cmd /c`, `powershell -Command`). This is a lexical classifier, not a PowerShell AST; an opaque payload is denied and an unresolved command is marked unchecked, so the git audit remains the backstop.
 - **Paths**: scope globs are repo-relative and written with `/` on every platform; absolute paths in tool events may be native (`C:\...` or `/...`) and are resolved before scope checks. Scope and deny matching are case-insensitive on Windows, so `SRC` and `src` name the same tree and `.ENV` cannot slip past `.env` on NTFS.
 
@@ -233,7 +233,7 @@ An optional config block declares import edges the repo does not want:
 
 `ratchet done` also audits the working tree with git. A changed path outside `scope` refuses the close, even when the write came from a shell command the classifier never saw. Temp paths (`/tmp`, `$TMPDIR`, `/var/folders`) are allowed; symlinks are resolved first. Interpreter payloads are not. Comma-separated scopes are accepted: `--scope "src/**,tests/**"`. `ratchet abandon --run <id>` closes a stranded run that no longer owns `current`; `ratchet abandon --session <id>` closes one session's contract.
 
-The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. With no live contract it falls back to the config's checks and warns that scope was not checked.
+The git pre-commit hook runs `ratchet hook pre-commit`. It reads the staged paths, refuses any path outside the live contract's scope or any runtime state (`.ratchet/current`, `.ratchet/runs/**`, `install.json`, `last-check.json`, `events.jsonl`), and only then runs the contract's verify commands. When `RATCHET_SESSION` is set, the hook passes it through as `--session`; with no live contract it falls back to the config's checks and warns that scope was not checked.
 
 For a deploy-style contract, start with `--require-clean`; then `check` and `done` refuse while tracked files are modified, so the certificate covers a commit rather than a dirty working tree. Build the artifact from a clean checkout (`git archive HEAD` or a dedicated worktree), never from the live build directory.
 
@@ -275,6 +275,8 @@ ratchet status
 
 Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config/opencode/plugins`, `~/.codex/hooks.json`, and `~/.agents/skills`. `ratchet status` reports adapters found on disk even when this repo has no install manifest, and labels them `(detected)`.
 
+For Bash calls the adapter resolves the repo from the command's `cd` target first, then the tool's `workdir`, then absolute paths. A `cd ~/repo && git commit` is guarded by `~/repo` even when the tool's workdir is `$HOME`; setting the workdir to the repo is still the clearer habit.
+
 In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. Interpreter payloads — `python3 - <<EOF`, `node <<EOF`, `bun -e`, `sh -s`, `node -e`, `perl -e` — are denied even when the body names an in-scope path, because the guard cannot see the rest of it; put the code in a file and run that file. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
 
 `--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
@@ -311,7 +313,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **474 deterministic unit and CLI tests**, no network. On non-Windows hosts 473 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
+- **477 deterministic unit and CLI tests**, no network. On non-Windows hosts 476 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

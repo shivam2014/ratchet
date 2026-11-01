@@ -321,3 +321,28 @@ test("thread: a forced start is allowed only for the session that owns the contr
   assert.equal(other.status, 2);
   assert.match(other.stderr, /abandon another thread/);
 });
+
+test("thread: a manual check names an ambiguous session-bound current contract", (t) => {
+  const dir = repo(t);
+  assert.equal(start(dir, "bound", "ses-bound").status, 0);
+  assert.equal(start(dir, "other", "ses-other").status, 0);
+
+  const manual = ratchet(dir, ["check"]);
+  assert.equal(manual.status, 1);
+  assert.match(manual.stderr, /bound to session ses-/);
+  assert.match(manual.stderr, /check --session ses-/);
+
+  const scoped = ratchet(dir, ["check", "--session", "ses-bound"]);
+  assert.equal(scoped.status, 0, scoped.stderr);
+});
+
+test("thread: status names a current pointer left on a finished run", (t) => {
+  const dir = repo(t);
+  assert.equal(start(dir, "stale", "ses-stale").status, 0);
+  const id = fs.readdirSync(path.join(dir, ".ratchet", "runs"))[0];
+  fs.writeFileSync(path.join(dir, ".ratchet", "runs", id, "result.json"), "{}\n");
+
+  const status = ratchet(dir, ["status"]);
+  assert.match(status.stdout, /contract: none/);
+  assert.match(status.stdout, new RegExp(`stale: ${id}`));
+});

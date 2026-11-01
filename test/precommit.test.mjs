@@ -124,4 +124,8 @@ test("pre-commit: multiple live contracts require RATCHET_SESSION", (t) => {
   const resolved = ratchet(dir, ["hook", "pre-commit"], { RATCHET_SESSION: "ses-a" });
   assert.equal(resolved.status, 0, resolved.stdout + resolved.stderr);
   assert.match(resolved.stdout, /pre-commit: pass/);
+
+  const explicit = ratchet(dir, ["hook", "pre-commit", "--session", "ses-a"]);
+  assert.equal(explicit.status, 0, explicit.stdout + explicit.stderr);
+  assert.match(explicit.stdout, /pre-commit: pass/);
 });

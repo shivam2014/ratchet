@@ -254,14 +254,38 @@ function flagValue(args, key) {
  */
 function contractForSession(root, sessionId) {
   if (sessionId) return loadRunForSession(root, sessionId);
-  const contract = loadRun(root);
-  if (contract && runFinished(root, contract.id)) return null;
-  return contract;
+  const current = loadRun(root);
+  if (!current || runFinished(root, current.id)) return null;
+  // One live session-bound contract is unambiguous for an auto-routed task;
+  // two or more are not, and the caller must name the session.
+  if (isSessionBound(current)) {
+    const live = liveRuns(root);
+    return live.length === 1 && live[0].id === current.id ? current : null;
+  }
+  return current;
+}
+
+function sessionBoundCurrent(root) {
+  const current = loadRun(root);
+  return current && !runFinished(root, current.id) && isSessionBound(current) ? current : null;
+}
+
+function sessionBoundMessage(contract) {
+  const lead = leadSession(contract) || "<id>";
+  return [
+    `the current contract ${contract.id} is bound to session ${lead}.`,
+    `Pass it explicitly: ratchet check --session ${lead}`,
+    `or run: ratchet done --session ${lead}`,
+  ].join("\n");
 }
 
 function requireContract(root, sessionId = null) {
   const contract = contractForSession(root, sessionId);
   if (!contract) {
+    if (!sessionId) {
+      const current = sessionBoundCurrent(root);
+      if (current) fail(sessionBoundMessage(current));
+    }
     fail(
       sessionId
         ? `No active task contract for session ${sessionId}. Run: ratchet task start --session ${sessionId} --role coder --goal "..." --scope "src/**"`
@@ -875,6 +899,7 @@ function commandPreCommit(args) {
   const root = findRoot(process.cwd());
   const report = preCommitReport(root, {
     timeoutMs: Number(args.one("timeout", 120000)),
+    session: flagValue(args, "session"),
   });
   if (report.skipped) {
     out(`pre-commit: ${report.skipped}`);
@@ -974,7 +999,12 @@ function commandHook(args) {
 function commandCheck(args) {
   const root = findRoot(process.cwd());
   const config = requireConfig(root);
-  const contract = contractForSession(root, flagValue(args, "session"));
+  const sessionId = flagValue(args, "session");
+  const contract = contractForSession(root, sessionId);
+  if (!contract && !sessionId) {
+    const current = sessionBoundCurrent(root);
+    if (current) fail(sessionBoundMessage(current));
+  }
   if (contract) {
     const dirty = cleanViolation(root, contract);
     if (dirty) fail(dirty);
@@ -1804,6 +1834,11 @@ function commandStatus(args) {
   out(`ratchet: ${disabled ? "DISABLED" : "enabled"}`);
   if (disabled) out(`  since ${disabled.at}: ${disabled.reason}`);
   out(`contract: ${contract ? `${contract.id}  (${contract.goal})` : "none"}${sessionId && !contract ? `  (session ${sessionId})` : ""}`);
+  const stale = loadRun(root);
+  if (stale && runFinished(root, stale.id) && stale.id !== contract?.id) {
+    out(`stale: ${stale.id} is finished, but .ratchet/current still points at it`);
+    out(`       clear with: ratchet abandon --run ${stale.id} --reason "stale pointer"`);
+  }
   if (contract) {
     out(`started: ${contract.createdAt}  (${formatAge(contract.createdAt)})`);
     out(`session: ${describeSession(contract)}`);
