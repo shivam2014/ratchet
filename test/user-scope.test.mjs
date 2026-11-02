@@ -96,3 +96,35 @@ test("user scope: a non-user contract cannot write outside its repo", (t) => {
   assert.equal(outside.status, 2);
   assert.match(outside.stderr, /outside scope/);
 });
+
+test("research: task start --role researcher is read-only and needs no verify", (t) => {
+  const home = userHome(t);
+  const repo = path.join(home, "research-repo");
+  fs.mkdirSync(repo);
+  spawnSync("git", ["init", "-q"], { cwd: repo });
+  fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "research", private: true }));
+  spawnSync("git", ["add", "-A"], { cwd: repo });
+  spawnSync(
+    "git",
+    ["-c", "user.email=test@example.com", "-c", "user.name=test", "-c", "commit.gpgsign=false", "commit", "-qm", "base"],
+    { cwd: repo },
+  );
+  assert.equal(ratchet(repo, ["init"]).status, 0);
+  const started = ratchet(repo, [
+    "task", "start",
+    "--role", "researcher",
+    "--goal", "read a screen",
+  ]);
+  assert.equal(started.status, 0, started.stderr);
+  const id = fs.readFileSync(path.join(repo, ".ratchet", "current"), "utf8").trim();
+  const contract = JSON.parse(fs.readFileSync(path.join(repo, ".ratchet", "runs", id, "contract.json"), "utf8"));
+  assert.equal(contract.readOnly, true);
+  assert.deepEqual(contract.scope, []);
+  assert.deepEqual(contract.verify, []);
+
+  const done = ratchet(repo, ["done"]);
+  assert.equal(done.status, 0, done.stderr);
+  const result = JSON.parse(fs.readFileSync(path.join(repo, ".ratchet", "runs", id, "result.json"), "utf8"));
+  assert.equal(result.verdict, "done");
+  assert.equal(fs.existsSync(path.join(repo, ".ratchet", "current")), false);
+});

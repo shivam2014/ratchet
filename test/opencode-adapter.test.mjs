@@ -297,3 +297,19 @@ test("opencode adapter: cd to another repo outranks the session workdir", { skip
     undefined,
   );
 });
+
+test("opencode adapter: an idle user-scope .ratchet does not guard home research", { skip: skipped }, async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-home-idle-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(home, ".ratchet"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".ratchet", "config.json"), JSON.stringify({ version: 1 }));
+  const adapter = await harness(home);
+
+  assert.equal(
+    adapter.before({
+      tool: "bash",
+      input: { workdir: home, command: 'python3 -c "print(1)"' },
+    }),
+    undefined,
+  );
+});

@@ -131,6 +131,17 @@ ratchet done
 
 Editor `write`/`edit` calls inside a repo are guarded exactly like Bash. A write outside every ratchet repo is guarded when the session repo has a live contract, and left alone when it does not. Use `--user` when the task really is a user-level install; otherwise the refusal names the manual command.
 
+### Research sessions
+
+From `$HOME` with no live user contract, an idle `~/.ratchet` is inert: reads and `/tmp` probes run without a contract. If you want an audit trail, start a read-only researcher contract:
+
+```bash
+ratchet task start --role researcher --goal "read the current screen"
+ratchet done          # checks: none (read-only)
+```
+
+`researcher` is read-only, needs no scope or verify, and `done` records a certificate with an empty check set. Inline interpreters (`python3 -c`, `node -e`, heredocs) are still denied because the guard cannot see their effects: write `/tmp/probe.py` and run it for a read-only probe, or put the code in a file inside the scope for task code. Compound shell lines are atomic; split `pkill ...; python3 ...` into separate calls if the second half is denied.
+
 ## Quick start
 
 ```bash
@@ -277,7 +288,7 @@ Global paths are `~/.pi/agent/extensions`, `~/.claude/settings.json`, `~/.config
 
 For Bash calls the adapter resolves the repo from the command's `cd` target first, then the tool's `workdir`, then absolute paths. A `cd ~/repo && git commit` is guarded by `~/repo` even when the tool's workdir is `$HOME`; setting the workdir to the repo is still the clearer habit.
 
-In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. Interpreter payloads — `python3 - <<EOF`, `node <<EOF`, `bun -e`, `sh -s`, `node -e`, `perl -e` — are denied even when the body names an in-scope path, because the guard cannot see the rest of it; put the code in a file and run that file. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
+In a repo with `.ratchet/config.json`, a write with no live contract is denied, not waved through; read-only commands (`git status`, `grep`) and `ratchet task start` remain allowed so the gate can be armed. Interpreter payloads — `python3 - <<EOF`, `node <<EOF`, `bun -e`, `sh -s`, `node -e`, `perl -e` — are denied even when the body names an in-scope path, because the guard cannot see the rest of it; put the code in `/tmp/probe.py` for a read-only probe, or in a file inside the scope for task code. If `done` prints "the guard observed 0 writes" while files changed, the adapter is not wired: the check surface was enforced, scope was not.
 
 `--project` is the default. Use `--user` for global installs. Omit `--harness` in a terminal and Ratchet prompts with the harnesses it detected. `--dry-run` prints the plan without writing. `ratchet uninstall --harness ...` reverses only what the manifest says it installed.
 
@@ -313,7 +324,7 @@ In a repo with `.ratchet/config.json`, a write with no live contract is denied, 
 
 ## Evidence
 
-- **477 deterministic unit and CLI tests**, no network. On non-Windows hosts 476 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
+- **479 deterministic unit and CLI tests**, no network. On non-Windows hosts 478 pass and 1 Windows-only check is skipped; on Windows the same case runs. `npm test`
 - **32 CLI stress cases**, each in its own process. `npm run test:stress`
 - **Real sessions** in Codex 0.163, Claude Code 2.1.258, pi 1.3.0, OpenCode 2.0.32, and T3 Code Nightly. The per-harness scripts drive real model sessions and need network plus a provider key; the unit and CLI suite does not.
 - **13 rules** in `rules.tsv`, each with a machine enforcer and a proof. `ratchet audit`

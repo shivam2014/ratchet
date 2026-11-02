@@ -172,7 +172,7 @@ function taskVerify(args, config) {
 
 function taskReadOnly(args) {
   const role = String(args.one("role", "coder"));
-  return args.has("read-only") || role === "reviewer" || role === "scout";
+  return args.has("read-only") || ["reviewer", "scout", "researcher"].includes(role);
 }
 
 /** A refusal has to name the command that fixes it, not only the rule. */
@@ -1103,7 +1103,9 @@ function commandDone(args) {
       );
     }
   }
-  const checks = readJson(checksPath(root, contract.id), null);
+  const storedChecks = readJson(checksPath(root, contract.id), null);
+  const readOnlyResearch = contract.readOnly && !(contract.verify ?? []).length;
+  const checks = storedChecks ?? (readOnlyResearch ? { ok: true, empty: true, ranAt: null, results: [] } : null);
   if (!checks) fail("REFUSED: no check evidence. Run: ratchet check");
   if (!checks.ok) fail("REFUSED: the last check run failed. Fix it, then run: ratchet check");
 
@@ -1146,7 +1148,13 @@ function commandDone(args) {
   clearCurrent(root, contract.id);
   out(`DONE  ${contract.id}`);
   out(`files: ${result.counts.files}  writes: ${result.counts.writes}`);
-  out(`checks: ${result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")}`);
+  out(
+    `checks: ${
+      result.checks.results.length
+        ? result.checks.results.map((r) => `${r.id}=${r.status === 0 ? "pass" : "fail"}`).join(" ")
+        : "none (read-only)"
+    }`,
+  );
   if (amendments.length) out(`amended: ${amendments.map((a) => a.reason).join("; ")}`);
   if (briefAmendments.length) {
     out(`requirements amended: ${briefAmendments.map((a) => a.reason).join("; ")}`);

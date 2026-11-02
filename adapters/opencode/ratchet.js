@@ -123,8 +123,16 @@ function rootFor(tool, args, base) {
   const gitRepo = (root) => Boolean(root) && fs.existsSync(path.join(root, ".git"));
 
   // Bash: the first target is the command's real cwd (`cd` before workdir),
-  // so its repo wins even if a broader user-scope root is live.
-  if (tool !== "write") return roots[0] ?? findRepoRoot(base);
+  // so its repo wins even if a broader user-scope root is live. An idle
+  // user-scope .ratchet (no .git, no current) is inert: research from $HOME
+  // must not be treated as an unstarted code task.
+  if (tool !== "write") {
+    const first = roots[0];
+    if (first && (gitRepo(first) || live(first))) return first;
+    const baseRoot = findRepoRoot(base);
+    if (baseRoot && (gitRepo(baseRoot) || live(baseRoot))) return baseRoot;
+    return null;
+  }
 
   // Writes: a live target root is the contract; otherwise an idle git repo is
   // still guarded so the refusal is "start a contract", not a silent write.
